@@ -146,7 +146,10 @@ functionality.
 #include "../FreeRTOS_Source/include/task.h"
 #include "../FreeRTOS_Source/include/timers.h"
 
-
+// including libraries for GPIO and ADC Set up
+#include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_gpio.h"
+#include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_rcc.h"
+#include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_adc.h"
 
 /*-----------------------------------------------------------*/
 #define mainQUEUE_LENGTH 100
@@ -180,13 +183,15 @@ static void Amber_LED_Controller_Task( void *pvParameters );
 
 xQueueHandle xQueue_handle = 0;
 
+
+/*-----------------------------------------------------------*/
+/*Function declarations*/
 // Setting up gpio
 void GPIO_SetUp();
 /*-----------------------------------------------------------*/
 
 int main(void)
 {
-	GPIO_SetIp();
 	/* Initialize LEDs */
 	STM_EVAL_LEDInit(amber_led);
 	STM_EVAL_LEDInit(green_led);
@@ -218,7 +223,6 @@ int main(void)
 	return 0;
 }
 
-
 /*-----------------------------------------------------------*/
 /*
  * Function sets up the ports for outputs and ADC
@@ -232,12 +236,15 @@ int main(void)
  * */
 void GPIO_SetUp(){
 	// Enable Clock
-	RCC_AHB1PeriphClockCmd(RCC_AHB1_Periph_GPIOC,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2_Periph_ADC1,ENABLE);
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);
 	// GPIO Init
 	// Set Pins
 
 }
+
+/*-----------------------------------------------------------*/
+
 static void Manager_Task( void *pvParameters )
 {
 	uint16_t tx_data = amber;
