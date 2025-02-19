@@ -194,7 +194,14 @@ void GPIO_SetUp();
 int main(void)
 {
 	GPIO_SetUp();
+	printf("GPIO Set up Done\n");
+	while(1){
+		ADC_SoftwareStartConv(ADC1);
+		while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
+		int ADC_Value = ADC_GetConversionValue(ADC1);
+		printf('The ADC Value is %d',ADC_Value);
 
+	}
 	/* Initialize LEDs */
 	STM_EVAL_LEDInit(amber_led);
 	STM_EVAL_LEDInit(green_led);
@@ -244,7 +251,20 @@ void GPIO_SetUp(){
 	GPIO_Output_Conf.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_Output_Conf.GPIO_OType = GPIO_OType_PP; //push pull
 	GPIO_Output_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_25MHz; // Medium speed
+	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_100MHz; // High speed
+
+	// Defining typedef for ADC
+	GPIO_InitTypeDef GPIO_ADC_Conf;
+	GPIO_ADC_Conf.GPIO_Pin = GPIO_Pin_3;
+	GPIO_ADC_Conf.GPIO_Mode = GPIO_Mode_AN;
+	GPIO_ADC_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
+	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_100MHz; // High speed
+
+	ADC_InitTypeDef ADC_Conf;
+	ADC_Conf.ADC_Resolution = ADC_Resolution_12b;
+	ADC_Conf.ADC_DataAlign =  ADC_DataAlign_Right;
+	ADC_Conf.ADC_ContinuousConvMode = ENABLE;
+	ADC_Conf.ADC_NbrOfConversion = 1; // One conversion per call?
 
 	// Enable Clock
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC,ENABLE);
@@ -254,6 +274,11 @@ void GPIO_SetUp(){
 	// PC0,1,2,6,7,8 as digital outputs
 	GPIO_Init(GPIOC,&GPIO_Output_Conf);
 	// PC3 as analog input for ADC
+	GPIO_Init(GPIOC,&GPIO_ADC_Conf);
+	ADC_DeInit(); //reset ADC to default
+	ADC_Init(ADC1,&ADC_Conf); // Initialize ADC
+	ADC_Cmd(ADC1,ENABLE); //enable ADC
+	ADC_RegularChannelConfig(ADC1,ADC_Channel_1,1,ADC_SampleTime_15Cycles); //set 15 cycles randomly
 }
 
 /*-----------------------------------------------------------*/
