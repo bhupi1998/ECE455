@@ -188,10 +188,13 @@ xQueueHandle xQueue_handle = 0;
 /*Function declarations*/
 // Setting up gpio
 void GPIO_SetUp();
+
 /*-----------------------------------------------------------*/
 
 int main(void)
 {
+	GPIO_SetUp();
+
 	/* Initialize LEDs */
 	STM_EVAL_LEDInit(amber_led);
 	STM_EVAL_LEDInit(green_led);
@@ -235,12 +238,22 @@ int main(void)
  * PC3 -> Potentionmeter Input
  * */
 void GPIO_SetUp(){
+	// Defining typedef for all outputs at once
+	GPIO_InitTypeDef GPIO_Output_Conf;
+	GPIO_Output_Conf.GPIO_Pin = (GPIO_Pin_0|GPIO_Pin_1|GPIO_Pin_2|GPIO_Pin_6|GPIO_Pin_7|GPIO_Pin_8);
+	GPIO_Output_Conf.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_Output_Conf.GPIO_OType = GPIO_OType_PP; //push pull
+	GPIO_Output_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
+	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_25MHz; // Medium speed
+
 	// Enable Clock
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC,ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);
 	// GPIO Init
 	// Set Pins
-
+	// PC0,1,2,6,7,8 as digital outputs
+	GPIO_Init(GPIOC,&GPIO_Output_Conf);
+	// PC3 as analog input for ADC
 }
 
 /*-----------------------------------------------------------*/
