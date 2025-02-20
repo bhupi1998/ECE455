@@ -164,7 +164,12 @@ functionality.
 #define red_led		LED5
 #define blue_led	LED6
 
-
+#define CLR GPIOC,GPIO_Pin_8 // Reset Pin
+#define CLK GPIOC,GPIO_Pin_7 // Clock Pin
+#define DATA GPIOC,GPIO_Pin_6 // Data Pin
+#define LED_GREEN GPIOC,GPIO_Pin_0
+#define LED_AMBER GPIOC,GPIO_Pin_1
+#define LED_RED GPIOC,GPIO_Pin_2
 /*
  * TODO: Implement this function for any hardware specific clock configuration
  * that was not already performed before main() was called.
@@ -189,18 +194,31 @@ xQueueHandle xQueue_handle = 0;
 // Setting up gpio
 void GPIO_SetUp();
 
+// Send High onto data
+void data_High();
+// Send Low onto data line
+void data_Low();
 /*-----------------------------------------------------------*/
 
 int main(void)
 {
 	GPIO_SetUp();
 	printf("GPIO Set up Done\n");
+//	while(1){
+//		ADC_SoftwareStartConv(ADC1);
+//		while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
+//		int ADC_Value = ADC_GetConversionValue(ADC1);
+//		printf(" %d \n", ADC_Value);
+//
+//	}
+	GPIO_SetBits(LED_RED);
+	GPIO_SetBits(LED_AMBER);
+	GPIO_SetBits(LED_GREEN);
 	while(1){
-		ADC_SoftwareStartConv(ADC1);
-		while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
-		int ADC_Value = ADC_GetConversionValue(ADC1);
-		printf("The ADC Value is %d \n", ADC_Value);
-
+		data_High();
+		for(int i = 0; i<100000;i++){} // delay for testing
+		data_Low();
+		for(int i = 0; i<100000;i++){} // delay for testing
 	}
 	/* Initialize LEDs */
 	STM_EVAL_LEDInit(amber_led);
@@ -280,9 +298,25 @@ void GPIO_SetUp(){
 	//ADC_DeInit(); //reset ADC to default
 	ADC_Init(ADC1,&ADC_Conf); // Initialize ADC
 	ADC_Cmd(ADC1,ENABLE); //enable ADC
-	ADC_RegularChannelConfig(ADC1,ADC_Channel_13,1,ADC_SampleTime_480Cycles); //set 15 cycles randomly
+	ADC_RegularChannelConfig(ADC1,ADC_Channel_13,1,ADC_SampleTime_15Cycles); //set 15 cycles randomly
 }
 
+// Send High onto data
+void data_High(){
+	GPIO_ResetBits(CLK); // set clock low
+	GPIO_SetBits(CLR); // set reset to high
+	GPIO_SetBits(DATA); // set data pin high
+	GPIO_SetBits(CLK); // set clock high
+	GPIO_ResetBits(CLK); // set clock low
+}
+// Send Low onto data line
+void data_Low(){
+	GPIO_ResetBits(CLK); // set clock low
+	GPIO_SetBits(CLR); // set reset to high
+	GPIO_ResetBits(DATA); // set data pin low
+	GPIO_SetBits(CLK); // set clock high
+	GPIO_ResetBits(CLK); // set clock low
+}
 /*-----------------------------------------------------------*/
 
 static void Manager_Task( void *pvParameters )
