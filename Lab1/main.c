@@ -216,10 +216,12 @@ int main(void)
 	GPIO_SetBits(LED_GREEN);
 	while(1){
 		data_High();
-		for(int i = 0; i<100000;i++){} // delay for testing
+		for(long int i = 0; i<10000000;i++){} // delay for testing
 		data_Low();
-		for(int i = 0; i<100000;i++){} // delay for testing
-	}
+		for(long int i = 0; i<10000000;i++){} // delay for testing
+//		data_Low();
+//		for(long int i = 0; i<10000000;i++){} // delay for testing
+		}
 	/* Initialize LEDs */
 	STM_EVAL_LEDInit(amber_led);
 	STM_EVAL_LEDInit(green_led);
@@ -270,7 +272,7 @@ void GPIO_SetUp(){
 	GPIO_Output_Conf.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_Output_Conf.GPIO_OType = GPIO_OType_PP; //push pull
 	GPIO_Output_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_100MHz; // High speed
+	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_2MHz; // High speed
 
 	// Defining typedef for ADC
 	GPIO_InitTypeDef GPIO_ADC_Conf;
@@ -278,7 +280,7 @@ void GPIO_SetUp(){
 	GPIO_ADC_Conf.GPIO_Pin = GPIO_Pin_3;
 	GPIO_ADC_Conf.GPIO_Mode = GPIO_Mode_AN;
 	GPIO_ADC_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_100MHz; // High speed
+	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_2MHz; // High speed
 
 	ADC_InitTypeDef ADC_Conf;
 	ADC_StructInit(&ADC_Conf);
@@ -307,7 +309,9 @@ void data_High(){
 	GPIO_SetBits(CLR); // set reset to high
 	GPIO_SetBits(DATA); // set data pin high
 	GPIO_SetBits(CLK); // set clock high
+	for(int i = 0; i<10;i++){}
 	GPIO_ResetBits(CLK); // set clock low
+	for(int i = 0; i<10;i++){}
 }
 // Send Low onto data line
 void data_Low(){
@@ -315,7 +319,9 @@ void data_Low(){
 	GPIO_SetBits(CLR); // set reset to high
 	GPIO_ResetBits(DATA); // set data pin low
 	GPIO_SetBits(CLK); // set clock high
+	for(int i = 0; i<10;i++){}
 	GPIO_ResetBits(CLK); // set clock low
+	for(int i = 0; i<10;i++){}
 }
 /*-----------------------------------------------------------*/
 
@@ -522,4 +528,3 @@ static void prvSetupHardware( void )
 	/* TODO: Setup the clocks, etc. here, if they were not configured before
 	main() was called. */
 }
-
