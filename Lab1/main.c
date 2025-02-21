@@ -154,7 +154,11 @@ functionality.
 /*-----------------------------------------------------------*/
 #define MAX_TRAFFIC_LIGHT_QUEUE 2 // 1 would be fine
 #define MAX_POT_QUEUE 2 //1 would be fine
-enum traffic_Light{RED,GREEN,AMBER};
+
+#define RED_LIGHT GPIO_Pin_0
+#define AMBER_LIGHT GPIO_Pin_1
+#define GREEN_LIGHT GPIO_Pin_2
+
 
 #define CLR GPIOC,GPIO_Pin_8 // Reset Pin
 #define CLK GPIOC,GPIO_Pin_7 // Clock Pin
@@ -321,7 +325,7 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 	printf(" %d \n", ADC_Value); // for testing
 	// Sends value onto a queue
     // Potentiometer values should be sent as the come and should never be full
-    xStatus = xQueueSendToBack(xQueue_Pot_Val,&ADC_Value,0);
+    int xStatus = xQueueSend(xQueue_Pot_Val,&ADC_Value,0);
     if(xStatus != pdPASS)
     {
         printf("Could not sent to the queue. \n");
@@ -330,6 +334,32 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 	vTaskDelayUntil(&xLastWakeTime, xDelay);
 	}
 }
+// Randomly generates new traffic
+static void traffic_Generator_Task(void *pvParameters){
+	TickType_t xLastWakeTime;
+	const TickType_t xDelay = pdMS_TO_TICKS(250); // setting a 250ms delay for now
+	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
+	xLastWakeTime = xTaskGetTickCount();
+    uint16_t ADC_Val;
+    uint16_t random_Val;
+    while(1){
+        xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
+        ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
+        // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/        
+        random_Val = rand() % 101; // generates a random value between 0 and 100
+        if(random_Val<ADC_Val){
+            // add a car to the traffic
+            // send it to the traffic queue
+        }
+        else{
+            // don't add a car to the traffic
+        }
+
+        // go into suspended for 250 ms
+	    vTaskDelayUntil(&xLastWakeTime, xDelay);
+    }
+}
+
 /*-----------------------------------------------------------*/
 
 static void Manager_Task( void *pvParameters )
