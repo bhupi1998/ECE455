@@ -152,17 +152,9 @@ functionality.
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_adc.h"
 
 /*-----------------------------------------------------------*/
-#define mainQUEUE_LENGTH 100
-
-#define amber  	0
-#define green  	1
-#define red  	2
-#define blue  	3
-
-#define amber_led	LED3
-#define green_led	LED4
-#define red_led		LED5
-#define blue_led	LED6
+#define MAX_TRAFFIC_LIGHT_QUEUE 2 // 1 would be fine
+#define MAX_POT_QUEUE 2 //1 would be fine
+enum traffic_Light{RED,GREEN,AMBER};
 
 #define CLR GPIOC,GPIO_Pin_8 // Reset Pin
 #define CLK GPIOC,GPIO_Pin_7 // Clock Pin
@@ -194,66 +186,47 @@ xQueueHandle xQueue_handle = 0;
 // Setting up gpio
 void GPIO_SetUp();
 
-// Send High onto data
+// Send High onto data line. Indicates a car is present
 void data_High();
-// Send Low onto data line
+// Send Low onto data line. indicates no car is present
 void data_Low();
-/*-----------------------------------------------------------*/
+// Clears all lights.
+void data_Rst(); // !!Currently untested
 
+/*-----------------------------------------------------------*/
+/*----------------------------TLS Functions----------------------*/
+static void traffic_Flow_Adjustment_Task(void *pvParameters);
+static void traffic_Generator_Task(void *pvParameters);
+static void traffic_Light_State_Task(void *pvParameters);
+static void system_Display_Task(void *pvParameters);
+/*-----------------------------------------------------------*/
 int main(void)
 {
 	GPIO_SetUp();
 	printf("GPIO Set up Done\n");
-//	while(1){
-//		ADC_SoftwareStartConv(ADC1);
-//		while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
-//		int ADC_Value = ADC_GetConversionValue(ADC1);
-//		printf(" %d \n", ADC_Value);
-//
-//	}
 	GPIO_SetBits(LED_RED);
 	GPIO_SetBits(LED_AMBER);
 	GPIO_SetBits(LED_GREEN);
-	while(1){
-		data_High();
-		for(long int i = 0; i<10000000;i++){} // delay for testing
-		data_Low();
-		for(long int i = 0; i<10000000;i++){} // delay for testing
-//		data_Low();
-//		for(long int i = 0; i<10000000;i++){} // delay for testing
-		}
-	/* Initialize LEDs */
-	STM_EVAL_LEDInit(amber_led);
-	STM_EVAL_LEDInit(green_led);
-	STM_EVAL_LEDInit(red_led);
-	STM_EVAL_LEDInit(blue_led);
 
 	/* Configure the system ready to run the demo.  The clock configuration
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
-
-	/* Create the queue used by the queue send and queue receive tasks.
-	http://www.freertos.org/a00116.html */
-	xQueue_handle = xQueueCreate( 	mainQUEUE_LENGTH,		/* The number of items the queue can hold. */
-							sizeof( uint16_t ) );	/* The size of each item the queue holds. */
+    xQueue_Traffic_Lights = xQueueCreate(MAX_TRAFFIC_LIGHT_QUEUE,sizeof(uint8_t)); // just need to represent 0,1,2 for uint8 should be sufficient
+    xQueue_Pot_Val = xQueueCreate(MAX_POT_QUEUE,sizeof(uint16_t));
 
 	/* Add to the registry, for the benefit of kernel aware debugging. */
-	vQueueAddToRegistry( xQueue_handle, "MainQueue" );
+	vQueueAddToRegistry( xQueue_Traffic_Lights, "TrafficQueue" );
+    vQueueAddToRegistry( xQueue_Pot_Val, "PotentiometerQueue" );
 
-	xTaskCreate( Manager_Task, "Manager", configMINIMAL_STACK_SIZE, NULL, 2, NULL);
-	xTaskCreate( Blue_LED_Controller_Task, "Blue_LED", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-	xTaskCreate( Red_LED_Controller_Task, "Red_LED", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-	xTaskCreate( Green_LED_Controller_Task, "Green_LED", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-	xTaskCreate( Amber_LED_Controller_Task, "Amber_LED", configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-
+	xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
 
 	return 0;
 }
 
-/*-----------------------------------------------------------*/
+/*-----------------Helper Functions & Setup-------------------------*/
 /*
  * Function sets up the ports for outputs and ADC
  * PC0 -> Red Light
@@ -272,7 +245,7 @@ void GPIO_SetUp(){
 	GPIO_Output_Conf.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_Output_Conf.GPIO_OType = GPIO_OType_PP; //push pull
 	GPIO_Output_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_2MHz; // High speed
+	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_2MHz; // Low Speed. High speed introduces noise and used too much current.
 
 	// Defining typedef for ADC
 	GPIO_InitTypeDef GPIO_ADC_Conf;
@@ -280,7 +253,7 @@ void GPIO_SetUp(){
 	GPIO_ADC_Conf.GPIO_Pin = GPIO_Pin_3;
 	GPIO_ADC_Conf.GPIO_Mode = GPIO_Mode_AN;
 	GPIO_ADC_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_2MHz; // High speed
+	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_2MHz; // Low Speed
 
 	ADC_InitTypeDef ADC_Conf;
 	ADC_StructInit(&ADC_Conf);
@@ -309,9 +282,9 @@ void data_High(){
 	GPIO_SetBits(CLR); // set reset to high
 	GPIO_SetBits(DATA); // set data pin high
 	GPIO_SetBits(CLK); // set clock high
-	for(int i = 0; i<10;i++){}
+	for(int i = 0; i<10;i++){} // delay
 	GPIO_ResetBits(CLK); // set clock low
-	for(int i = 0; i<10;i++){}
+	for(int i = 0; i<10;i++){} // delay
 }
 // Send Low onto data line
 void data_Low(){
@@ -319,9 +292,43 @@ void data_Low(){
 	GPIO_SetBits(CLR); // set reset to high
 	GPIO_ResetBits(DATA); // set data pin low
 	GPIO_SetBits(CLK); // set clock high
-	for(int i = 0; i<10;i++){}
+	for(int i = 0; i<10;i++){}// delay
 	GPIO_ResetBits(CLK); // set clock low
-	for(int i = 0; i<10;i++){}
+	for(int i = 0; i<10;i++){} // delay
+}
+// Reset all LEDS off
+void data_Rst(){
+	GPIO_ResetBits(CLR); // drives the reset line low. All other values are irrelevant
+	for(int i = 0; i<10;i++){} // delay
+	GPIO_SetBits(CLR); // set reset to high
+}
+/*-----------------------------------------------------------*/
+
+/*-----------------------TLS Tasks---------------------------*/
+// Reads the state of the potentiometer and sends it to a queue 
+static void traffic_Flow_Adjustment_Task(void *pvParameters){
+	TickType_t xLastWakeTime;
+	const TickType_t xDelay = pdMS_TO_TICKS(250); // setting a 250ms delay for now
+	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
+	xLastWakeTime = xTaskGetTickCount();
+
+	while(1)
+	{
+	// Read ADC
+	ADC_SoftwareStartConv(ADC1);
+	while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
+	int ADC_Value = ADC_GetConversionValue(ADC1);
+	printf(" %d \n", ADC_Value); // for testing
+	// Sends value onto a queue
+    // Potentiometer values should be sent as the come and should never be full
+    xStatus = xQueueSendToBack(xQueue_Pot_Val,&ADC_Value,0);
+    if(xStatus != pdPASS)
+    {
+        printf("Could not sent to the queue. \n");
+    }
+	// go into suspended for 250 ms
+	vTaskDelayUntil(&xLastWakeTime, xDelay);
+	}
 }
 /*-----------------------------------------------------------*/
 
