@@ -232,7 +232,11 @@ int main(void)
 	vQueueAddToRegistry( xQueue_Traffic_State, "TrafficLightStateQueue" );
     vQueueAddToRegistry( xQueue_Pot_Val, "PotentiometerQueue" );
     vQueueAddToRegistry( xQueue_Add_Traffic, "NewTrafficQueue" );
+
 	xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(traffic_Generator_Task, "Generate Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(system_Display_Task, "Display Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	//xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
 
@@ -343,6 +347,7 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 
 	while(1)
 	{
+	printf("in flow adjustment task");
 	// Read ADC
 	ADC_SoftwareStartConv(ADC1);
 	while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
@@ -350,10 +355,10 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 	printf(" %d \n", ADC_Value); // for testing
 	// Sends value onto a queue
     // Potentiometer values should be sent as the come and should never be full
-    int xStatus = xQueueSend(xQueue_Pot_Val,&ADC_Value,0);
+    int xStatus = xQueueSend(xQueue_Pot_Val,&ADC_Value,xDelay);
     if(xStatus != pdPASS)
     {
-        printf("Could not sent to the queue. \n");
+        printf("Could not sent to the queue ADC Queue. \n");
     }
 	// go into suspended for 250 ms
 	vTaskDelayUntil(&xLastWakeTime, xDelay);
@@ -368,17 +373,18 @@ static void traffic_Generator_Task(void *pvParameters){
     uint16_t ADC_Val;
     uint16_t random_Val;
     while(1){
+    	printf("in Traffic generator task");
         xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
         ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
         // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
         random_Val = rand() % 101; // generates a random value between 0 and 100
-        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,0);
+        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,xDelay*2);
         if( xTrafficTimingStatus!=pdPASS ){
         	printf("Could not send to traffic status queue");
         }
-        if(random_Val<ADC_Val){
+         if(random_Val<ADC_Val){
             // add a car to the traffic
-        	int xStatus = xQueueSend(xQueue_Add_Traffic,1,0);
+        	int xStatus = xQueueSend(xQueue_Add_Traffic,1,xDelay*2);
             if(xStatus != pdPASS)
             {
                 printf("Could not sent to the new traffic queue. \n");
@@ -387,7 +393,7 @@ static void traffic_Generator_Task(void *pvParameters){
         }
         else{
             // don't add a car to the traffic
-        	int xStatus = xQueueSend(xQueue_Add_Traffic,0,0);
+        	int xStatus = xQueueSend(xQueue_Add_Traffic,0,xDelay*2);
             if(xStatus != pdPASS)
             {
                 printf("Could not sent to the new traffic queue. \n");
@@ -399,6 +405,34 @@ static void traffic_Generator_Task(void *pvParameters){
     }
 }
 
+static void system_Display_Task(void *pvParameters){
+	TickType_t xLastWakeTime;
+	const TickType_t xDelay = pdMS_TO_TICKS(250); // setting a 250ms delay for now
+	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
+	xLastWakeTime = xTaskGetTickCount();
+	char newTraffic = 0;
+	static uint32_t cars = 0x0;
+	while(1){
+		printf("in system display task");
+		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,xDelay);
+		if(xStatus !=pdPASS){
+			printf("Could not read the new traffic queue. \n");
+		}
+		if(uxQueueMessagesWaiting(xQueue_Add_Traffic == MAX_NEW_TRAFFIC_QUEUE)){
+			// queue has not been updated yet so no action is taken
+		}else if(newTraffic == 1 ){
+			// add a car
+			cars = (cars << 1)|0x1;
+			screen_Write(cars);
+		}else if(newTraffic == 0){
+			// add a blank spot
+			cars = (cars << 1);
+			screen_Write(cars);
+		}
+        // go into suspended for 250 ms
+	    vTaskDelayUntil(&xLastWakeTime, xDelay);
+	}
+}
 /*-----------------------------------------------------------*/
 
 /*-----------------------------------------------------------*/
@@ -462,3 +496,4 @@ static void prvSetupHardware( void )
 	/* TODO: Setup the clocks, etc. here, if they were not configured before
 	main() was called. */
 }
+
