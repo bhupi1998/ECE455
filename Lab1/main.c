@@ -137,6 +137,7 @@ functionality.
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "stm32f4_discovery.h"
 /* Kernel includes. */
 #include "stm32f4xx.h"
@@ -154,7 +155,7 @@ functionality.
 /*-----------------------------------------------------------*/
 #define MAX_TRAFFIC_LIGHT_QUEUE 2 // 1 would be fine
 #define MAX_POT_QUEUE 2 //1 would be fine
-
+#define MAX_NEW_TRAFFIC_QUEUE 2 //1 would be fine
 #define RED_LIGHT GPIO_Pin_0
 #define AMBER_LIGHT GPIO_Pin_1
 #define GREEN_LIGHT GPIO_Pin_2
@@ -172,20 +173,12 @@ functionality.
  */
 static void prvSetupHardware( void );
 
-/*
- * The queue send and receive tasks as described in the comments at the top of
- * this file.
- */
-static void Manager_Task( void *pvParameters );
-static void Blue_LED_Controller_Task( void *pvParameters );
-static void Green_LED_Controller_Task( void *pvParameters );
-static void Red_LED_Controller_Task( void *pvParameters );
-static void Amber_LED_Controller_Task( void *pvParameters );
 
-xQueueHandle xQueue_Traffic_Lights = 0;
+
+xQueueHandle xQueue_Traffic_State = 0;
 xQueueHandle xQueue_Pot_Val = 0;
-
-
+xQueueHandle xQueue_Add_Traffic = 0;
+xQueueHandle xQueue_Traffic_Timing = 0;
 /*-----------------------------------------------------------*/
 /*Function declarations*/
 // Setting up gpio
@@ -226,49 +219,19 @@ int main(void)
 				for(int i = 0; i<10000000;i++){} // delay for testing
 			}
 	}
-	while(1){
-	screen_Write(0b1111111111111111111);
-	for(int i = 0; i<100000000;i++){} // delay for testing
-	screen_Write(0b0101010101010101010);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b0);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b10);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b100);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b1000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b10000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b100000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b1000000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b10000000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b100000000);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b1000000001);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b10000000010);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b10000000100);
-	for(int i = 0; i<10000000;i++){} // delay for testing
-	screen_Write(0b1000000000100);
-	for(int i = 0; i<1000000;i++){} // delay for testing
-	}
+
 	/* Configure the system ready to run the demo.  The clock configuration
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
-    xQueue_Traffic_Lights = xQueueCreate(MAX_TRAFFIC_LIGHT_QUEUE,sizeof(uint8_t)); // just need to represent 0,1,2 for uint8 should be sufficient
+	xQueue_Traffic_State = xQueueCreate(MAX_TRAFFIC_LIGHT_QUEUE,sizeof(uint8_t)); // just need to represent 0,1,2 for uint8 should be sufficient
     xQueue_Pot_Val = xQueueCreate(MAX_POT_QUEUE,sizeof(uint16_t));
-
+    xQueue_Add_Traffic = xQueueCreate(MAX_NEW_TRAFFIC_QUEUE,sizeof(char)); // just writing 1 or 0. 1 bit would be fine
+    xQueue_Traffic_Timing = xQueueCreate(MAX_TRAFFIC_LIGHT_QUEUE,sizeof(uint8_t)); // number from 0 to 100 for potentiometer value
 	/* Add to the registry, for the benefit of kernel aware debugging. */
-	vQueueAddToRegistry( xQueue_Traffic_Lights, "TrafficQueue" );
+	vQueueAddToRegistry( xQueue_Traffic_State, "TrafficLightStateQueue" );
     vQueueAddToRegistry( xQueue_Pot_Val, "PotentiometerQueue" );
-
+    vQueueAddToRegistry( xQueue_Add_Traffic, "NewTrafficQueue" );
 	xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
@@ -409,12 +372,26 @@ static void traffic_Generator_Task(void *pvParameters){
         ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
         // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
         random_Val = rand() % 101; // generates a random value between 0 and 100
+        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,0);
+        if( xTrafficTimingStatus!=pdPASS ){
+        	printf("Could not send to traffic status queue");
+        }
         if(random_Val<ADC_Val){
             // add a car to the traffic
+        	int xStatus = xQueueSend(xQueue_Add_Traffic,1,0);
+            if(xStatus != pdPASS)
+            {
+                printf("Could not sent to the new traffic queue. \n");
+            }
             // send it to the traffic queue
         }
         else{
             // don't add a car to the traffic
+        	int xStatus = xQueueSend(xQueue_Add_Traffic,0,0);
+            if(xStatus != pdPASS)
+            {
+                printf("Could not sent to the new traffic queue. \n");
+            }
         }
 
         // go into suspended for 250 ms
