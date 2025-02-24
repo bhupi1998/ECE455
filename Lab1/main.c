@@ -226,12 +226,38 @@ int main(void)
 				for(int i = 0; i<10000000;i++){} // delay for testing
 			}
 	}
+	while(1){
 	screen_Write(0b1111111111111111111);
-	for(int i = 0; i<1000000000;i++){} // delay for testing
+	for(int i = 0; i<100000000;i++){} // delay for testing
 	screen_Write(0b0101010101010101010);
-	for(int i = 0; i<1000000000;i++){} // delay for testing
-	screen_Write(0b1010101010101010101);
-
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b0);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b10);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b100);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b1000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b10000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b100000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b1000000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b10000000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b100000000);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b1000000001);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b10000000010);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b10000000100);
+	for(int i = 0; i<10000000;i++){} // delay for testing
+	screen_Write(0b1000000000100);
+	for(int i = 0; i<1000000;i++){} // delay for testing
+	}
 	/* Configure the system ready to run the demo.  The clock configuration
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
