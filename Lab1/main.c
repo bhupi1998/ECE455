@@ -153,9 +153,11 @@ functionality.
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_adc.h"
 
 /*-----------------------------------------------------------*/
-#define MAX_TRAFFIC_LIGHT_QUEUE 2 // 1 would be fine
-#define MAX_POT_QUEUE 2 //1 would be fine
-#define MAX_NEW_TRAFFIC_QUEUE 2 //1 would be fine
+#define MAX_TRAFFIC_LIGHT_QUEUE 1 // 1 would be fine
+#define MAX_POT_QUEUE 1 //1 would be fine
+#define MAX_NEW_TRAFFIC_QUEUE 1 //1 would be fine
+#define MAX_GREEN_LIGHT_ON 5000 //5s
+
 #define RED_LIGHT GPIO_Pin_0
 #define AMBER_LIGHT GPIO_Pin_1
 #define GREEN_LIGHT GPIO_Pin_2
@@ -232,11 +234,12 @@ int main(void)
 	vQueueAddToRegistry( xQueue_Traffic_State, "TrafficLightStateQueue" );
     vQueueAddToRegistry( xQueue_Pot_Val, "PotentiometerQueue" );
     vQueueAddToRegistry( xQueue_Add_Traffic, "NewTrafficQueue" );
+    vQueueAddToRegistry( xQueue_Traffic_Timing, "TrafficTimingQueue" );
 
 	xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(traffic_Generator_Task, "Generate Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(system_Display_Task, "Display Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	//xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(traffic_Light_State_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
 
@@ -383,7 +386,7 @@ static void traffic_Generator_Task(void *pvParameters){
         ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
         // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
         random_Val = rand() % 101; // generates a random value between 0 and 100
-        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,xDelay);
+        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,0);
         if( xTrafficTimingStatus!=pdPASS ){
         	printf("Could not send to traffic status queue\n");
         }
@@ -417,17 +420,39 @@ static void system_Display_Task(void *pvParameters){
 	xLastWakeTime = xTaskGetTickCount();
 	char newTraffic = 0;
 	static uint32_t cars = 0x0;
-	static char light_State = GREEN_LIGHT;
+	static char lightState = GREEN_LIGHT;
 	while(1){
+		int xLightStateStatus = xQueueReceive(xQueue_Traffic_State,&lightState,0);
+		if(xLightStateStatus !=pdPASS){
+			printf("Could not read the new traffic queue. \n");
+		}
+		// control Traffic lights
+		if(lightState == GREEN_LIGHT){
+			// turn to green
+			GPIO_SetBits(GPIOC,GREEN_LIGHT);
+			GPIO_ResetBits(GPIOC,AMBER_LIGHT);
+			GPIO_ResetBits(GPIOC,RED_LIGHT);
+		}else if(lightState == AMBER_LIGHT){
+			// turn to amber
+			GPIO_ResetBits(GPIOC,GREEN_LIGHT);
+			GPIO_SetBits(GPIOC,AMBER_LIGHT);
+			GPIO_ResetBits(GPIOC,RED_LIGHT);
+		}else if(lightState == RED_LIGHT){
+			// turn to red
+			GPIO_ResetBits(GPIOC,GREEN_LIGHT);
+			GPIO_ResetBits(GPIOC,AMBER_LIGHT);
+			GPIO_SetBits(GPIOC,RED_LIGHT);
+		}
+
+		// Display cars
 		//printf("in system display task\n");
-		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,xDelay);
+		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,0);
 		if(xStatus !=pdPASS){
 			printf("Could not read the new traffic queue. \n");
 		}
 		if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){
 			// queue has not been updated yet so no action is taken
 		}else if(newTraffic == 1 ){ // add a car
-			if(newTra)
 			// add a car
 			cars = (cars << 1)|0x1;
 			screen_Write(cars);
@@ -436,7 +461,44 @@ static void system_Display_Task(void *pvParameters){
 			cars = (cars << 1);
 			screen_Write(cars);
 		}
+
+
         // go into suspended for 250 ms
+	    vTaskDelayUntil(&xLastWakeTime, xDelay);
+	}
+}
+// changes the traffic light cycle
+static void traffic_Light_State_Task(void *pvParameters){
+	TickType_t xLastWakeTime;
+	TickType_t xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON); // setting a 250ms delay for now
+	volatile char lightState = RED_LIGHT;
+	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
+	xLastWakeTime = xTaskGetTickCount();
+	int traffic = 0; // value from 0 to 100 indicating how much traffic there is
+	while(1){
+		int xStatus = xQueueReceive(xQueue_Traffic_Timing,&traffic,0);
+		if(xStatus !=pdPASS){
+			printf("Could not read the traffic queue. \n");
+		}else{
+			if(lightState == GREEN_LIGHT){
+				// turn to yellow
+				lightState = AMBER_LIGHT;
+				xDelay = pdMS_TO_TICKS(500);
+			}else if(lightState == AMBER_LIGHT){
+				// turn to red
+				lightState = RED_LIGHT;
+				xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON);
+			}else if(lightState == RED_LIGHT){
+				// turn green
+				lightState = GREEN_LIGHT;
+				xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON);
+			}
+		}
+    	int xChangeLightStatus = xQueueSend(xQueue_Traffic_State,&lightState,0);
+        if(xChangeLightStatus != pdPASS)
+        {
+            printf("Could not sent to the traffic state queue. \n");
+        }
 	    vTaskDelayUntil(&xLastWakeTime, xDelay);
 	}
 }
