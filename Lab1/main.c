@@ -347,7 +347,7 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 
 	while(1)
 	{
-	printf("in flow adjustment task");
+	printf("in flow adjustment task\n");
 	// Read ADC
 	ADC_SoftwareStartConv(ADC1);
 	while(!ADC_GetFlagStatus(ADC1,ADC_FLAG_EOC)){} //wait for conversion to finish
@@ -372,29 +372,34 @@ static void traffic_Generator_Task(void *pvParameters){
 	xLastWakeTime = xTaskGetTickCount();
     uint16_t ADC_Val;
     uint16_t random_Val;
+    char addCar = 1;
+    char noCar = 0;
     while(1){
-    	printf("in Traffic generator task");
-        xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
+    	printf("in Traffic generator task\n");
+        int x_ADC_Receive_Status=xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
+        if(x_ADC_Receive_Status != pdPASS){
+        	printf("Could not receive adc value\n");
+        }
         ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
         // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
         random_Val = rand() % 101; // generates a random value between 0 and 100
-        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,xDelay*2);
+        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,xDelay);
         if( xTrafficTimingStatus!=pdPASS ){
-        	printf("Could not send to traffic status queue");
+        	printf("Could not send to traffic status queue\n");
         }
-         if(random_Val<ADC_Val){
+        if(random_Val<ADC_Val){
             // add a car to the traffic
-        	int xStatus = xQueueSend(xQueue_Add_Traffic,1,xDelay*2);
-            if(xStatus != pdPASS)
+        	int xAddCarStatus = xQueueSend(xQueue_Add_Traffic,&addCar,0);
+            if(xAddCarStatus != pdPASS)
             {
                 printf("Could not sent to the new traffic queue. \n");
             }
-            // send it to the traffic queue
+             //send it to the traffic queue
         }
         else{
             // don't add a car to the traffic
-        	int xStatus = xQueueSend(xQueue_Add_Traffic,0,xDelay*2);
-            if(xStatus != pdPASS)
+        	int xNoAddCarStatus = xQueueSend(xQueue_Add_Traffic,&noCar,0);
+            if(xNoAddCarStatus != pdPASS)
             {
                 printf("Could not sent to the new traffic queue. \n");
             }
@@ -412,19 +417,21 @@ static void system_Display_Task(void *pvParameters){
 	xLastWakeTime = xTaskGetTickCount();
 	char newTraffic = 0;
 	static uint32_t cars = 0x0;
+	static char light_State = GREEN_LIGHT;
 	while(1){
-		printf("in system display task");
+		//printf("in system display task\n");
 		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,xDelay);
 		if(xStatus !=pdPASS){
 			printf("Could not read the new traffic queue. \n");
 		}
-		if(uxQueueMessagesWaiting(xQueue_Add_Traffic == MAX_NEW_TRAFFIC_QUEUE)){
+		if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){
 			// queue has not been updated yet so no action is taken
-		}else if(newTraffic == 1 ){
+		}else if(newTraffic == 1 ){ // add a car
+			if(newTra)
 			// add a car
 			cars = (cars << 1)|0x1;
 			screen_Write(cars);
-		}else if(newTraffic == 0){
+		}else if(newTraffic == 0){ // don't add a car
 			// add a blank spot
 			cars = (cars << 1);
 			screen_Write(cars);
@@ -496,4 +503,3 @@ static void prvSetupHardware( void )
 	/* TODO: Setup the clocks, etc. here, if they were not configured before
 	main() was called. */
 }
-
