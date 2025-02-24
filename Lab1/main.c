@@ -182,7 +182,8 @@ static void Green_LED_Controller_Task( void *pvParameters );
 static void Red_LED_Controller_Task( void *pvParameters );
 static void Amber_LED_Controller_Task( void *pvParameters );
 
-xQueueHandle xQueue_handle = 0;
+xQueueHandle xQueue_Traffic_Lights = 0;
+xQueueHandle xQueue_Pot_Val = 0;
 
 
 /*-----------------------------------------------------------*/
@@ -196,7 +197,9 @@ void data_High();
 void data_Low();
 // Clears all lights.
 void data_Rst(); // !!Currently untested
-
+// Writes 19 bit integer onto screen
+// LSB is the newest car
+void screen_Write(uint32_t data);
 /*-----------------------------------------------------------*/
 /*----------------------------TLS Functions----------------------*/
 static void traffic_Flow_Adjustment_Task(void *pvParameters);
@@ -208,9 +211,26 @@ int main(void)
 {
 	GPIO_SetUp();
 	printf("GPIO Set up Done\n");
-	GPIO_SetBits(LED_RED);
-	GPIO_SetBits(LED_AMBER);
-	GPIO_SetBits(LED_GREEN);
+
+	if(0){
+		printf("Hardware Check");
+
+		GPIO_SetBits(LED_RED);
+		GPIO_SetBits(LED_AMBER);
+		GPIO_SetBits(LED_GREEN);
+
+		for(int k =0; k<30 ; k++){
+				data_High();
+				for(int i = 0; i<10000000;i++){} // delay for testing
+				data_Low();
+				for(int i = 0; i<10000000;i++){} // delay for testing
+			}
+	}
+	screen_Write(0b1111111111111111111);
+	for(int i = 0; i<1000000000;i++){} // delay for testing
+	screen_Write(0b0101010101010101010);
+	for(int i = 0; i<1000000000;i++){} // delay for testing
+	screen_Write(0b1010101010101010101);
 
 	/* Configure the system ready to run the demo.  The clock configuration
 	can be done here if it was not done before main() was called. */
@@ -306,10 +326,26 @@ void data_Rst(){
 	for(int i = 0; i<10;i++){} // delay
 	GPIO_SetBits(CLR); // set reset to high
 }
+
+// Writes 19 bit integer onto screen
+// LSB is the newest car
+void screen_Write(uint32_t data){
+	data_Rst(); // clear display
+	char bit_To_Send = 0x0;
+	// write oldest car first, write MSB first
+	for(int i=18;i>=0;i--){
+		bit_To_Send = 0x1 & (data>>i);
+		if(bit_To_Send == 0x1){
+			data_High();
+		}else{
+			data_Low();
+		}
+	}
+}
 /*-----------------------------------------------------------*/
 
 /*-----------------------TLS Tasks---------------------------*/
-// Reads the state of the potentiometer and sends it to a queue 
+// Reads the state of the potentiometer and sends it to a queue
 static void traffic_Flow_Adjustment_Task(void *pvParameters){
 	TickType_t xLastWakeTime;
 	const TickType_t xDelay = pdMS_TO_TICKS(250); // setting a 250ms delay for now
@@ -345,7 +381,7 @@ static void traffic_Generator_Task(void *pvParameters){
     while(1){
         xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
         ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
-        // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/        
+        // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
         random_Val = rand() % 101; // generates a random value between 0 and 100
         if(random_Val<ADC_Val){
             // add a car to the traffic
@@ -361,148 +397,6 @@ static void traffic_Generator_Task(void *pvParameters){
 }
 
 /*-----------------------------------------------------------*/
-
-static void Manager_Task( void *pvParameters )
-{
-	uint16_t tx_data = amber;
-
-
-	while(1)
-	{
-
-		if(tx_data == amber)
-			STM_EVAL_LEDOn(amber_led);
-		if(tx_data == green)
-			STM_EVAL_LEDOn(green_led);
-		if(tx_data == red)
-			STM_EVAL_LEDOn(red_led);
-		if(tx_data == blue)
-			STM_EVAL_LEDOn(blue_led);
-
-		if( xQueueSend(xQueue_handle,&tx_data,1000))
-		{
-			printf("Manager: %u ON!\n", tx_data);
-			if(++tx_data == 4)
-				tx_data = 0;
-			vTaskDelay(1000);
-		}
-		else
-		{
-			printf("Manager Failed!\n");
-		}
-	}
-}
-
-/*-----------------------------------------------------------*/
-
-static void Blue_LED_Controller_Task( void *pvParameters )
-{
-	uint16_t rx_data;
-	while(1)
-	{
-		if(xQueueReceive(xQueue_handle, &rx_data, 500))
-		{
-			if(rx_data == blue)
-			{
-				vTaskDelay(250);
-				STM_EVAL_LEDOff(blue_led);
-				printf("Blue Off.\n");
-			}
-			else
-			{
-				if( xQueueSend(xQueue_handle,&rx_data,1000))
-					{
-						printf("BlueTask GRP (%u).\n", rx_data); // Got wwrong Package
-						vTaskDelay(500);
-					}
-			}
-		}
-	}
-}
-
-
-/*-----------------------------------------------------------*/
-
-static void Green_LED_Controller_Task( void *pvParameters )
-{
-	uint16_t rx_data;
-	while(1)
-	{
-		if(xQueueReceive(xQueue_handle, &rx_data, 500))
-		{
-			if(rx_data == green)
-			{
-				vTaskDelay(250);
-				STM_EVAL_LEDOff(green_led);
-				printf("Green Off.\n");
-			}
-			else
-			{
-				if( xQueueSend(xQueue_handle,&rx_data,1000))
-					{
-						printf("GreenTask GRP (%u).\n", rx_data); // Got wrong Package
-						vTaskDelay(500);
-					}
-			}
-		}
-	}
-}
-
-/*-----------------------------------------------------------*/
-
-static void Red_LED_Controller_Task( void *pvParameters )
-{
-	uint16_t rx_data;
-	while(1)
-	{
-		if(xQueueReceive(xQueue_handle, &rx_data, 500))
-		{
-			if(rx_data == red)
-			{
-				vTaskDelay(250);
-				STM_EVAL_LEDOff(red_led);
-				printf("Red off.\n");
-			}
-			else
-			{
-				if( xQueueSend(xQueue_handle,&rx_data,1000))
-					{
-						printf("RedTask GRP (%u).\n", rx_data); // Got wrong Package
-						vTaskDelay(500);
-					}
-			}
-		}
-	}
-}
-
-
-/*-----------------------------------------------------------*/
-
-static void Amber_LED_Controller_Task( void *pvParameters )
-{
-	uint16_t rx_data;
-	while(1)
-	{
-		if(xQueueReceive(xQueue_handle, &rx_data, 500))
-		{
-			if(rx_data == amber)
-			{
-				vTaskDelay(250);
-				STM_EVAL_LEDOff(amber_led);
-				printf("Amber Off.\n");
-			}
-			else
-			{
-				if( xQueueSend(xQueue_handle,&rx_data,1000))
-					{
-						printf("AmberTask GRP (%u).\n", rx_data); // Got wrong Package
-						vTaskDelay(500);
-					}
-			}
-		}
-	}
-}
-
 
 /*-----------------------------------------------------------*/
 
