@@ -1,0 +1,95 @@
+void Traffic_Light_State_Task( void *pvParameters )
+{
+	xTimerStart( xTimer_GREEN, 0);
+
+	uint16_t LIGHT = GREEN;
+	xQueueOverwrite(xQueue_LIGHT, &LIGHT);
+
+	for( ;; )
+	{
+		vTaskDelay(100 * TICK_RATE );
+	}
+
+}
+
+/*-----------------------------------------------------------*/
+
+void vCallbackGreen ( TimerHandle_t xTimer)
+{
+	xTimerStart( xTimer_YELLOW, 0 );
+
+	uint16_t LIGHT = YELLOW;
+	xQueueOverwrite(xQueue_LIGHT, &LIGHT);
+}
+
+/*-----------------------------------------------------------*/
+
+void vCallbackYellow ( TimerHandle_t xTimer)
+{
+	int flow;
+	BaseType_t xStatus = xQueuePeek( xQueue_FLOW, &flow, TICK_RATE );
+
+	if ( xStatus == pdPASS )
+	{
+		xTimerChangePeriod( xTimer_RED, pdMS_TO_TICKS(10000 - 50 * flow), 0 );
+
+		uint16_t LIGHT = RED;
+		xQueueOverwrite(xQueue_LIGHT, &LIGHT);
+	}
+}
+
+/*-----------------------------------------------------------*/
+
+void vCallbackRed ( TimerHandle_t xTimer)
+{
+	int flow;
+	BaseType_t xStatus = xQueuePeek( xQueue_FLOW, &flow, TICK_RATE );
+
+	if ( xStatus == pdPASS )
+	{
+		xTimerChangePeriod( xTimer_GREEN, pdMS_TO_TICKS(5000 + 50 * flow), 0 );
+
+		uint16_t LIGHT = GREEN;
+		xQueueOverwrite(xQueue_LIGHT, &LIGHT);
+	}
+}
+		// Traffic Car LEDS shift register
+		for (int i = 20; i>0; i--)
+		{
+			if ( cars[i] == YES )
+				GPIO_SetBits(GPIOC, DATA);
+			else
+				GPIO_ResetBits(GPIOC, DATA);
+
+			// Cycle
+			GPIO_SetBits(GPIOC, CLOCK);
+			GPIO_ResetBits(GPIOC, CLOCK);
+		}
+
+		// Moving ALL cars on GREEN lights
+		if ( LIGHT == GREEN )
+		{
+			for (int i = 19; i > 0; i--)
+				cars[i] = cars[i-1];
+		}
+
+		// Conditions for stopping on RED and YELLOW lights
+		else
+		{
+			// Shifting cars before stop sign
+			for (int i = 8; i > 0; i--)
+			{
+				if (cars[i] == NO)
+				{
+					cars[i] = cars[i-1];
+					cars[i-1] = NO;
+				}
+			}
+
+			// Shifting cars after stop sign
+			for (int i = 19; i > 9; i--)
+			{
+				cars[i] = cars[i-1];
+				cars[i-1] = NO;
+			}
+		}
