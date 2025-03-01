@@ -162,6 +162,8 @@ functionality.
 #define AMBER_LIGHT GPIO_Pin_1
 #define GREEN_LIGHT GPIO_Pin_2
 
+#define PAST_INTERSECTION_MASK 0b1111111111100000000
+#define BEFORE_INTERSECTION_MASK 0b11111111
 
 #define CLR GPIOC,GPIO_Pin_8 // Reset Pin
 #define CLK GPIOC,GPIO_Pin_7 // Clock Pin
@@ -195,6 +197,10 @@ void data_Rst(); // !!Currently untested
 // Writes 19 bit integer onto screen
 // LSB is the newest car
 void screen_Write(uint32_t data);
+
+// update screen depending on state of traffic light
+void move_Green_Light(uint32_t cars, char new_car);
+void move_Red_Light(uint32_t cars, char new_car); // also used for yellow light
 /*-----------------------------------------------------------*/
 /*----------------------------TLS Functions----------------------*/
 static void traffic_Flow_Adjustment_Task(void *pvParameters);
@@ -449,19 +455,19 @@ static void system_Display_Task(void *pvParameters){
 		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,0);
 		if(xStatus !=pdPASS){
 			printf("Could not read the new traffic queue. \n");
+		}else{ // Add traffic
+			if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){
+				// queue has not been updated yet so no action is taken
+			// }else if(newTraffic == 1 ){ // add a car
+			// 	// add a car
+			// 	cars = (cars << 1)|0x1;
+			// 	screen_Write(cars);
+			// }else if(newTraffic == 0){ // don't add a car
+			// 	// add a blank spot
+			// 	cars = (cars << 1);
+			// 	screen_Write(cars);
 		}
-		if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){
-			// queue has not been updated yet so no action is taken
-		}else if(newTraffic == 1 ){ // add a car
-			// add a car
-			cars = (cars << 1)|0x1;
-			screen_Write(cars);
-		}else if(newTraffic == 0){ // don't add a car
-			// add a blank spot
-			cars = (cars << 1);
-			screen_Write(cars);
 		}
-
 
         // go into suspended for 250 ms
 	    vTaskDelayUntil(&xLastWakeTime, xDelay);
@@ -500,6 +506,48 @@ static void traffic_Light_State_Task(void *pvParameters){
             printf("Could not sent to the traffic state queue. \n");
         }
 	    vTaskDelayUntil(&xLastWakeTime, xDelay);
+	}
+}
+// Updates the scren if the light is green
+/*Inputs = current state of the screen and if a car is added or not
+*/
+void move_Green_Light(uint32_t cars, char new_car){
+	if(new_car == 1 ){ // add a car
+		// add a car
+		cars = (cars << 1)|0x1;
+		screen_Write(cars);
+	}else if(new_car == 0){ // don't add a car
+		// add a blank spot
+		cars = (cars << 1);
+		screen_Write(cars);
+	}
+}
+/* Updates screen if light is yello or amber
+	inputs: Current state of the screen and if a car is added or not
+	All cars after intersections are moved up.
+	intersection is at BIT8 and onwards
+*/ 
+void move_Red_Light(uint32_t cars, char new_car){
+	// Move cars after the intersection
+	uint32_t cars_past_intersection = cars & PAST_INTERSECTION_MASK;
+	uint32_t cars_before_intersection = cars & ~PAST_INTERSECTION_MASK;
+	cars_past_intersection = cars_past_intersection << 1 
+	for(int i=0;i<8;i++){ // Need to shift cars to fill the gap before the stop light
+		int empty_spot = (cars_before_intersection << i) & 0b10000000;
+		if(!empty_spot){ // found an empty spot
+			uint16_t upper_cars = (BEFORE_INTERSECTION_MASK<<(8-i)) & cars_before_intersection; // save cars to not move
+			uint16_t lower_cars = (cars_before_intersection <<1) & BEFORE_INTERSECTION_MASK; // shift the cars below by 1 to cover the empty spot
+			cars_before_intersection = upper_cars|lower_cars;
+			break;
+		}
+	}
+	cars = cars_before_intersection | cars_past_intersection;
+	if(new_car){ 
+		cars = cars|0x1;
+		screen_Write(cars);
+	}
+	else{
+		screen_write(cars);
 	}
 }
 /*-----------------------------------------------------------*/
