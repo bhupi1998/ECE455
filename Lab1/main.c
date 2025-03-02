@@ -156,7 +156,10 @@ functionality.
 #define MAX_TRAFFIC_LIGHT_QUEUE 1 // 1 would be fine
 #define MAX_POT_QUEUE 1 //1 would be fine
 #define MAX_NEW_TRAFFIC_QUEUE 1 //1 would be fine
-#define MAX_GREEN_LIGHT_ON 5000 //5s
+
+#define MAX_TRAFFIC_LIGHT_ON_SEC 4 //5s
+#define MIN_TRAFFIC_LIGHT_ON_SEC 2 //2s
+#define AMBER_TRAFFIC_LIGHT_ON_SEC 1
 
 #define RED_LIGHT GPIO_Pin_0
 #define AMBER_LIGHT GPIO_Pin_1
@@ -376,7 +379,7 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 // Randomly generates new traffic
 static void traffic_Generator_Task(void *pvParameters){
 	TickType_t xLastWakeTime;
-	const TickType_t xDelay = pdMS_TO_TICKS(250); // setting a 250ms delay for now
+	const TickType_t xDelay = pdMS_TO_TICKS(2500); // add a new car every 2.5 seconds
 	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
 	xLastWakeTime = xTaskGetTickCount();
     uint16_t ADC_Val;
@@ -388,32 +391,32 @@ static void traffic_Generator_Task(void *pvParameters){
         int x_ADC_Receive_Status=xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
         if(x_ADC_Receive_Status != pdPASS){
         	printf("Could not receive adc value\n");
-        }
-        ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
-        // Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
-        random_Val = rand() % 101; // generates a random value between 0 and 100
-        int xTrafficTimingStatus = xQueueSend(xQueue_Traffic_Timing,&ADC_Val,0);
-        if( xTrafficTimingStatus!=pdPASS ){
-        	printf("Could not send to traffic status queue\n");
-        }
-        if(random_Val<ADC_Val){
-            // add a car to the traffic
-        	int xAddCarStatus = xQueueSend(xQueue_Add_Traffic,&addCar,0);
-            if(xAddCarStatus != pdPASS)
-            {
-                printf("Could not sent to the new traffic queue. \n");
-            }
-             //send it to the traffic queue
-        }
-        else{
-            // don't add a car to the traffic
-        	int xNoAddCarStatus = xQueueSend(xQueue_Add_Traffic,&noCar,0);
-            if(xNoAddCarStatus != pdPASS)
-            {
-                printf("Could not sent to the new traffic queue. \n");
-            }
-        }
-
+        }else{
+			ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
+			// Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
+			random_Val = rand() % 101 + 10; // generates a random value between 0 and 100
+			int xTrafficTimingStatus = xQueueOverwrite(xQueue_Traffic_Timing,&ADC_Val,0); // push most uptodate values
+			if( xTrafficTimingStatus!=pdPASS ){
+				printf("Could not send to traffic status queue\n");
+			}
+			if(random_Val<ADC_Val){
+				// add a car to the traffic
+				int xAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&addCar,0);
+				if(xAddCarStatus != pdPASS)
+				{
+					printf("Could not sent to the new traffic queue. \n");
+				}
+				//send it to the traffic queue
+			}
+			else{
+				// don't add a car to the traffic
+				int xNoAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&noCar,0);
+				if(xNoAddCarStatus != pdPASS)
+				{
+					printf("Could not sent to the new traffic queue. \n");
+				}
+			}
+		}
         // go into suspended for 250 ms
 	    vTaskDelayUntil(&xLastWakeTime, xDelay);
     }
@@ -430,43 +433,40 @@ static void system_Display_Task(void *pvParameters){
 	while(1){
 		int xLightStateStatus = xQueueReceive(xQueue_Traffic_State,&lightState,0);
 		if(xLightStateStatus !=pdPASS){
-			printf("Could not read the new traffic queue. \n");
+			printf("Could not read the traffic state queue. \n");
 		}
-		// control Traffic lights
-		if(lightState == GREEN_LIGHT){
-			// turn to green
-			GPIO_SetBits(GPIOC,GREEN_LIGHT);
-			GPIO_ResetBits(GPIOC,AMBER_LIGHT);
-			GPIO_ResetBits(GPIOC,RED_LIGHT);
-		}else if(lightState == AMBER_LIGHT){
-			// turn to amber
-			GPIO_ResetBits(GPIOC,GREEN_LIGHT);
-			GPIO_SetBits(GPIOC,AMBER_LIGHT);
-			GPIO_ResetBits(GPIOC,RED_LIGHT);
-		}else if(lightState == RED_LIGHT){
-			// turn to red
-			GPIO_ResetBits(GPIOC,GREEN_LIGHT);
-			GPIO_ResetBits(GPIOC,AMBER_LIGHT);
-			GPIO_SetBits(GPIOC,RED_LIGHT);
+		else{
+			// control Traffic lights
+			if(lightState == GREEN_LIGHT){
+				// turn to green
+				GPIO_SetBits(GPIOC,GREEN_LIGHT);
+				GPIO_ResetBits(GPIOC,AMBER_LIGHT);
+				GPIO_ResetBits(GPIOC,RED_LIGHT);
+			}else if(lightState == AMBER_LIGHT){
+				// turn to amber
+				GPIO_ResetBits(GPIOC,GREEN_LIGHT);
+				GPIO_SetBits(GPIOC,AMBER_LIGHT);
+				GPIO_ResetBits(GPIOC,RED_LIGHT);
+			}else if(lightState == RED_LIGHT){
+				// turn to red
+				GPIO_ResetBits(GPIOC,GREEN_LIGHT);
+				GPIO_ResetBits(GPIOC,AMBER_LIGHT);
+				GPIO_SetBits(GPIOC,RED_LIGHT);
+			}
 		}
-
 		// Display cars
 		//printf("in system display task\n");
 		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,0);
 		if(xStatus !=pdPASS){
-			printf("Could not read the new traffic queue. \n");
+			printf("Could not read the new traffic queue. \n"); 
 		}else{ // Add traffic
-			if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){
+			// if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){ // not needed since xstatus takes care of this
 				// queue has not been updated yet so no action is taken
-			// }else if(newTraffic == 1 ){ // add a car
-			// 	// add a car
-			// 	cars = (cars << 1)|0x1;
-			// 	screen_Write(cars);
-			// }else if(newTraffic == 0){ // don't add a car
-			// 	// add a blank spot
-			// 	cars = (cars << 1);
-			// 	screen_Write(cars);
-		}
+			if(lightState == GREEN_LIGHT){
+				move_Green_Light(cars, newTraffic)
+			}else{
+				move_Red_Light(cars,newTraffic);
+			}
 		}
 
         // go into suspended for 250 ms
@@ -480,6 +480,7 @@ static void traffic_Light_State_Task(void *pvParameters){
 	volatile char lightState = RED_LIGHT;
 	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
 	xLastWakeTime = xTaskGetTickCount();
+	int light_On_Time = 0;
 	int traffic = 0; // value from 0 to 100 indicating how much traffic there is
 	while(1){
 		int xStatus = xQueueReceive(xQueue_Traffic_Timing,&traffic,0);
@@ -489,15 +490,17 @@ static void traffic_Light_State_Task(void *pvParameters){
 			if(lightState == GREEN_LIGHT){
 				// turn to yellow
 				lightState = AMBER_LIGHT;
-				xDelay = pdMS_TO_TICKS(500);
+				xDelay = pdMS_TO_TICKS(AMBER_TRAFFIC_LIGHT_ON_SEC*1000);
 			}else if(lightState == AMBER_LIGHT){
 				// turn to red
 				lightState = RED_LIGHT;
-				xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON);
+				light_On_Time = MAX_TRAFFIC_LIGHT_ON_SEC-((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100
+				xDelay = pdMS_TO_TICKS(light_On_Time*1000);
 			}else if(lightState == RED_LIGHT){
 				// turn green
 				lightState = GREEN_LIGHT;
-				xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON);
+				light_On_Time = MIN_TRAFFIC_LIGHT_ON_SEC+((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100
+				xDelay = pdMS_TO_TICKS(light_On_Time*1000);
 			}
 		}
     	int xChangeLightStatus = xQueueSend(xQueue_Traffic_State,&lightState,0);
@@ -508,7 +511,7 @@ static void traffic_Light_State_Task(void *pvParameters){
 	    vTaskDelayUntil(&xLastWakeTime, xDelay);
 	}
 }
-// Updates the scren if the light is green
+// Updates the screen for green light
 /*Inputs = current state of the screen and if a car is added or not
 */
 void move_Green_Light(uint32_t cars, char new_car){
@@ -522,7 +525,7 @@ void move_Green_Light(uint32_t cars, char new_car){
 		screen_Write(cars);
 	}
 }
-/* Updates screen if light is yello or amber
+/* Updates screen for red or amber lights
 	inputs: Current state of the screen and if a car is added or not
 	All cars after intersections are moved up.
 	intersection is at BIT8 and onwards
