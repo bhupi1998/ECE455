@@ -157,8 +157,8 @@ functionality.
 #define MAX_POT_QUEUE 1 //1 would be fine
 #define MAX_NEW_TRAFFIC_QUEUE 1 //1 would be fine
 
-#define MAX_TRAFFIC_LIGHT_ON_SEC 4 //5s
-#define MIN_TRAFFIC_LIGHT_ON_SEC 2 //2s
+#define MAX_TRAFFIC_LIGHT_ON_SEC 10 //5s
+#define MIN_TRAFFIC_LIGHT_ON_SEC 5 //2s
 #define AMBER_TRAFFIC_LIGHT_ON_SEC 1
 
 #define RED_LIGHT GPIO_Pin_0
@@ -202,8 +202,8 @@ void data_Rst(); // !!Currently untested
 void screen_Write(uint32_t data);
 
 // update screen depending on state of traffic light
-void move_Green_Light(uint32_t cars, char new_car);
-void move_Red_Light(uint32_t cars, char new_car); // also used for yellow light
+uint32_t move_Green_Light(uint32_t cars, char new_car);
+uint32_t move_Red_Light(uint32_t cars, char new_car); // also used for yellow light
 /*-----------------------------------------------------------*/
 /*----------------------------TLS Functions----------------------*/
 static void traffic_Flow_Adjustment_Task(void *pvParameters);
@@ -379,13 +379,14 @@ static void traffic_Flow_Adjustment_Task(void *pvParameters){
 // Randomly generates new traffic
 static void traffic_Generator_Task(void *pvParameters){
 	TickType_t xLastWakeTime;
-	const TickType_t xDelay = pdMS_TO_TICKS(2500); // add a new car every 2.5 seconds
+	const TickType_t xDelay = pdMS_TO_TICKS(2000); // add a new car every 2.5 seconds
 	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
 	xLastWakeTime = xTaskGetTickCount();
     uint16_t ADC_Val;
     uint16_t random_Val;
     char addCar = 1;
     char noCar = 0;
+    volatile char noCarCount = 0; // to ensure a car is added for every 5 no cars
     while(1){
     	printf("in Traffic generator task\n");
         int x_ADC_Receive_Status=xQueueReceive(xQueue_Pot_Val,&ADC_Val,0); // get ADC Value
@@ -395,13 +396,13 @@ static void traffic_Generator_Task(void *pvParameters){
 			ADC_Val = (float)ADC_Val/(float)4096 * 100; // results in value between 0 and 100
 			// Reference for rand() : https://www.geeksforgeeks.org/c-rand-function/
 			random_Val = rand() % 101 + 10; // generates a random value between 0 and 100
-			int xTrafficTimingStatus = xQueueOverwrite(xQueue_Traffic_Timing,&ADC_Val,0); // push most uptodate values
+			int xTrafficTimingStatus = xQueueOverwrite(xQueue_Traffic_Timing,&ADC_Val); // push most uptodate values
 			if( xTrafficTimingStatus!=pdPASS ){
 				printf("Could not send to traffic status queue\n");
 			}
 			if(random_Val<ADC_Val){
 				// add a car to the traffic
-				int xAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&addCar,0);
+				int xAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&addCar);
 				if(xAddCarStatus != pdPASS)
 				{
 					printf("Could not sent to the new traffic queue. \n");
@@ -410,10 +411,12 @@ static void traffic_Generator_Task(void *pvParameters){
 			}
 			else{
 				// don't add a car to the traffic
-				int xNoAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&noCar,0);
-				if(xNoAddCarStatus != pdPASS)
-				{
-					printf("Could not sent to the new traffic queue. \n");
+				noCarCount++;
+				if(noCarCount == 5){
+					noCarCount = 0; // reset
+					int xNoAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&addCar);
+				}else{
+					int xNoAddCarStatus = xQueueOverwrite(xQueue_Add_Traffic,&noCar);
 				}
 			}
 		}
@@ -458,14 +461,14 @@ static void system_Display_Task(void *pvParameters){
 		//printf("in system display task\n");
 		int xStatus = xQueueReceive(xQueue_Add_Traffic,&newTraffic,0);
 		if(xStatus !=pdPASS){
-			printf("Could not read the new traffic queue. \n"); 
+			printf("Could not read the new traffic queue. \n");
 		}else{ // Add traffic
 			// if(uxQueueMessagesWaiting(xQueue_Add_Traffic) == MAX_NEW_TRAFFIC_QUEUE){ // not needed since xstatus takes care of this
 				// queue has not been updated yet so no action is taken
 			if(lightState == GREEN_LIGHT){
-				move_Green_Light(cars, newTraffic)
+				cars = move_Green_Light(cars, newTraffic);
 			}else{
-				move_Red_Light(cars,newTraffic);
+				cars = move_Red_Light(cars,newTraffic);
 			}
 		}
 
@@ -476,7 +479,7 @@ static void system_Display_Task(void *pvParameters){
 // changes the traffic light cycle
 static void traffic_Light_State_Task(void *pvParameters){
 	TickType_t xLastWakeTime;
-	TickType_t xDelay = pdMS_TO_TICKS(MAX_GREEN_LIGHT_ON); // setting a 250ms delay for now
+	TickType_t xDelay = pdMS_TO_TICKS(MAX_TRAFFIC_LIGHT_ON_SEC); // setting a 250ms delay for now
 	volatile char lightState = RED_LIGHT;
 	// need to initialize with the current tick time. Managed by vTaskDelayUntil() afterwards
 	xLastWakeTime = xTaskGetTickCount();
@@ -494,12 +497,12 @@ static void traffic_Light_State_Task(void *pvParameters){
 			}else if(lightState == AMBER_LIGHT){
 				// turn to red
 				lightState = RED_LIGHT;
-				light_On_Time = MAX_TRAFFIC_LIGHT_ON_SEC-((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100
+				light_On_Time = MAX_TRAFFIC_LIGHT_ON_SEC-((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100;
 				xDelay = pdMS_TO_TICKS(light_On_Time*1000);
 			}else if(lightState == RED_LIGHT){
 				// turn green
 				lightState = GREEN_LIGHT;
-				light_On_Time = MIN_TRAFFIC_LIGHT_ON_SEC+((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100
+				light_On_Time = MIN_TRAFFIC_LIGHT_ON_SEC+((MAX_TRAFFIC_LIGHT_ON_SEC-MIN_TRAFFIC_LIGHT_ON_SEC)*traffic)/100;
 				xDelay = pdMS_TO_TICKS(light_On_Time*1000);
 			}
 		}
@@ -514,7 +517,7 @@ static void traffic_Light_State_Task(void *pvParameters){
 // Updates the screen for green light
 /*Inputs = current state of the screen and if a car is added or not
 */
-void move_Green_Light(uint32_t cars, char new_car){
+uint32_t move_Green_Light(uint32_t cars, char new_car){
 	if(new_car == 1 ){ // add a car
 		// add a car
 		cars = (cars << 1)|0x1;
@@ -524,17 +527,18 @@ void move_Green_Light(uint32_t cars, char new_car){
 		cars = (cars << 1);
 		screen_Write(cars);
 	}
+	return cars;
 }
 /* Updates screen for red or amber lights
 	inputs: Current state of the screen and if a car is added or not
 	All cars after intersections are moved up.
 	intersection is at BIT8 and onwards
-*/ 
-void move_Red_Light(uint32_t cars, char new_car){
+*/
+uint32_t move_Red_Light(uint32_t cars, char new_car){
 	// Move cars after the intersection
 	uint32_t cars_past_intersection = cars & PAST_INTERSECTION_MASK;
 	uint32_t cars_before_intersection = cars & ~PAST_INTERSECTION_MASK;
-	cars_past_intersection = cars_past_intersection << 1 
+	cars_past_intersection = cars_past_intersection << 1;
 	for(int i=0;i<8;i++){ // Need to shift cars to fill the gap before the stop light
 		int empty_spot = (cars_before_intersection << i) & 0b10000000;
 		if(!empty_spot){ // found an empty spot
@@ -545,13 +549,14 @@ void move_Red_Light(uint32_t cars, char new_car){
 		}
 	}
 	cars = cars_before_intersection | cars_past_intersection;
-	if(new_car){ 
+	if(new_car){
 		cars = cars|0x1;
 		screen_Write(cars);
 	}
 	else{
-		screen_write(cars);
+		screen_Write(cars);
 	}
+	return cars;
 }
 /*-----------------------------------------------------------*/
 
