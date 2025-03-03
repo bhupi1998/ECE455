@@ -511,12 +511,12 @@ void vtraffic_Light_State_CallBack(TimerHandle_t xTimer){
 				xDelay = pdMS_TO_TICKS(light_On_Time*1000);
 			}
 		}
-    	int xChangeLightStatus = xQueueSend(xQueue_Traffic_State,&lightState,0);
+    	int xChangeLightStatus = xQueueSend(xQueue_Traffic_State,&lightState,100==pdPASS);
         if(xChangeLightStatus != pdPASS)
         {
             printf("Could not sent to the traffic state queue. \n");
         }
-	    vTaskDelayUntil(&xLastWakeTime, xDelay);
+        xTimerChangePeriod(xTimer,xDelay,0);
 	}
 }
 // Updates the screen for green light
