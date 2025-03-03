@@ -208,11 +208,12 @@ uint32_t move_Red_Light(uint32_t cars, char new_car); // also used for yellow li
 /*----------------------------TLS Functions----------------------*/
 static void traffic_Flow_Adjustment_Task(void *pvParameters);
 static void traffic_Generator_Task(void *pvParameters);
-static void traffic_Light_State_Task(void *pvParameters);
+void vtraffic_Light_State_CallBack(TimerHandle_t xTimer);
 static void system_Display_Task(void *pvParameters);
 /*-----------------------------------------------------------*/
 int main(void)
 {
+	uint32_t trafficTimer;
 	GPIO_SetUp();
 	printf("GPIO Set up Done\n");
 
@@ -248,8 +249,12 @@ int main(void)
 	xTaskCreate(traffic_Flow_Adjustment_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(traffic_Generator_Task, "Generate Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(system_Display_Task, "Display Traffic",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	xTaskCreate(traffic_Light_State_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	//xTaskCreate(traffic_Light_State_Task, "Potentiometer Read",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	/* Start the tasks and timer running. */
+
+	// Timer
+	TimerHandle_t xtrafficTimer = xTimerCreate("Traffic Light",500,pdTRUE,(void *) trafficTimer,vtraffic_Light_State_CallBack);
+	xTimerStart(xtrafficTimer,0);
 	vTaskStartScheduler();
 
 	return 0;
@@ -477,7 +482,7 @@ static void system_Display_Task(void *pvParameters){
 	}
 }
 // changes the traffic light cycle
-static void traffic_Light_State_Task(void *pvParameters){
+void vtraffic_Light_State_CallBack(TimerHandle_t xTimer){
 	TickType_t xLastWakeTime;
 	TickType_t xDelay = pdMS_TO_TICKS(MAX_TRAFFIC_LIGHT_ON_SEC); // setting a 250ms delay for now
 	volatile char lightState = RED_LIGHT;
