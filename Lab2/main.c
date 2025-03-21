@@ -19,7 +19,15 @@
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_adc.h"
 
 /*---------------DEFINE-----------------------------------*/
+#define amber  	0
+#define green  	1
+#define red  	2
+#define blue  	3
 
+#define amber_led	LED3
+#define green_led	LED4
+#define red_led		LED5
+#define blue_led	LED6
 
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
@@ -96,6 +104,11 @@ int main(void)
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 
+	/*
+	led usage
+	STM_EVAL_LEDOn(amber_led);
+	STM_EVAL_LEDOff(blue_led);
+	*/
 
 	// USER Defined Tasks
 	/* Start the tasks and timer running. */
@@ -128,42 +141,11 @@ static void monitor_Task(void *pvParameters){
  * PC3 -> Potentionmeter Input
  * */
 void GPIO_SetUp(){
-	// Defining typedef for all outputs at once
-	GPIO_InitTypeDef GPIO_Output_Conf;
-	GPIO_StructInit(&GPIO_Output_Conf);
-	GPIO_Output_Conf.GPIO_Pin = (GPIO_Pin_0|GPIO_Pin_1|GPIO_Pin_2|GPIO_Pin_6|GPIO_Pin_7|GPIO_Pin_8);
-	GPIO_Output_Conf.GPIO_Mode = GPIO_Mode_OUT;
-	GPIO_Output_Conf.GPIO_OType = GPIO_OType_PP; //push pull
-	GPIO_Output_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_Output_Conf.GPIO_Speed = GPIO_Speed_2MHz; // Low Speed. High speed introduces noise and used too much current.
-
-	// Defining typedef for ADC
-	GPIO_InitTypeDef GPIO_ADC_Conf;
-	GPIO_StructInit(&GPIO_ADC_Conf);
-	GPIO_ADC_Conf.GPIO_Pin = GPIO_Pin_3;
-	GPIO_ADC_Conf.GPIO_Mode = GPIO_Mode_AN;
-	GPIO_ADC_Conf.GPIO_PuPd = GPIO_PuPd_NOPULL; // no pull ups since push pull is enabled
-	GPIO_ADC_Conf.GPIO_Speed = GPIO_Speed_2MHz; // Low Speed
-
-	ADC_InitTypeDef ADC_Conf;
-	ADC_StructInit(&ADC_Conf);
-	ADC_Conf.ADC_Resolution = ADC_Resolution_12b;
-	ADC_Conf.ADC_DataAlign =  ADC_DataAlign_Right;
-
-
-	// Enable Clock
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC,ENABLE);
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1,ENABLE);
-	// GPIO Init
-	// Set Pins
-	// PC0,1,2,6,7,8 as digital outputs
-	GPIO_Init(GPIOC,&GPIO_Output_Conf);
-	// PC3 as analog input for ADC
-	GPIO_Init(GPIOC,&GPIO_ADC_Conf);
-	//ADC_DeInit(); //reset ADC to default
-	ADC_Init(ADC1,&ADC_Conf); // Initialize ADC
-	ADC_Cmd(ADC1,ENABLE); //enable ADC
-	ADC_RegularChannelConfig(ADC1,ADC_Channel_13,1,ADC_SampleTime_15Cycles); //set 15 cycles randomly
+	/* Initialize LEDs */
+	STM_EVAL_LEDInit(amber_led);
+	STM_EVAL_LEDInit(green_led);
+	STM_EVAL_LEDInit(red_led);
+	STM_EVAL_LEDInit(blue_led);
 }
 
 
