@@ -45,10 +45,9 @@ static void prvSetupHardware( void );
 
 
 
-xQueueHandle xQueue_Traffic_State = 0;
-xQueueHandle xQueue_Pot_Val = 0;
-xQueueHandle xQueue_Add_Traffic = 0;
-xQueueHandle xQueue_Traffic_Timing = 0;
+QueueHandle_t  dd_task_queue, completed_task_queue;
+
+
 /*-----------------------------------------------------------*/
 
 /*------------------------Structs-----------------------*/
@@ -67,15 +66,10 @@ struct dd_task_list {
 	dd_task task;
 	struct dd_task_list *next_task
 }
-/*-----------------------------------------------------------*/
+/*-------------------Functions-----------------------------*/
 /*Function declarations*/
-void create_dd_task( TaskHandle_t t_handle,
-	task_type type,
-	uint32_t task_id,
-	uint32_t absolute_deadline,
-	);
-void delete_dd_task(uint32_t task_id);
-
+void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline);
+void complete_dd_task(uint32_t task_id);
 // idk what the * are for
 // will probably return a pointer
 **dd_task_list get_active_dd_task_list(void);
@@ -88,9 +82,10 @@ void GPIO_SetUp();
 
 
 /*-----------------------------------------------------------*/
-/*----------------------------TLS Functions----------------------*/
-//static void traffic_Flow_Adjustment_Task(void *pvParameters);
-
+/*----------------------------DDS Functions----------------------*/
+static void deadline_Driven_Scheduler_Task(void *pvParameters)
+static void DDS_Task_Gen_Task(void *pvParameters)
+static void monitor_Task(void *pvParameters)
 /*-----------------------------------------------------------*/
 int main(void)
 {
@@ -101,10 +96,14 @@ int main(void)
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
-	//xQueue_Traffic_State = xQueueCreate(MAX_TRAFFIC_LIGHT_QUEUE,sizeof(uint8_t)); // just need to represent 0,1,2 for uint8 should be sufficient
+	// space for 10 tasks might be excessive since the DDS will clear it out right away
+	dd_task_queue = xQueueCreate(10, sizeof(struct dd_task));
+	
+	// contains taskID
+	completed_task_queue = xQueueCreate(10, sizeof(uint32_t));
 
 	/* Add to the registry, for the benefit of kernel aware debugging. */
-	//vQueueAddToRegistry( xQueue_Traffic_State, "TrafficLightStateQueue" );
+	vQueueAddToRegistry( dd_task_queue, "DD_TASK_Q" );
 
 
 	// DDS Core
@@ -133,6 +132,31 @@ int main(void)
 /*---------------------DDS-Tasks----------------------------------------*/
 
 static void deadline_Driven_Scheduler_Task(void *pvParameters){
+	// these lists contain the head of the list
+	static dd_task_list active_List = NULL;
+	static dd_task_list completed_List = NULL;
+	static dd_task_list overdue_List = NULL;
+
+	struct dd_task received_task;
+
+	while(1){
+		// a new task was added
+		if (xQueueReceive(dd_task_queue, &received_task, portMAX_DELAY) == pdPASS)
+		{
+			// NEED TO ASSIGN RELEASE TIME 
+			received_task.release_time = xTaskGetTickCount();
+			// ADD TO ACTIVE LIST
+			//! i don't think a linked list is being created here!
+			dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node));
+			new_Node.task = received_task; // make new linked list item
+			new_Node.next_task = NULL; // make it point to the previous tail of the list
+			active_List = new_Node; // update the head
+
+			// SORT BY DEADLINE
+
+			// SET USER TASK PRIORITY
+		}
+	}
 
 }
 static void DDS_Task_Gen_Task(void *pvParameters){
@@ -185,7 +209,7 @@ static void F_task1(void *pvParameters){
 		STM_EVAL_LEDOff(red_led);
 	}
 }
-/*-----------------Helper Functions & Setup-------------------------*/
+/*-----------------------Setup-------------------------*/
 /*
  * Function sets up the ports for outputs and ADC
  * PC0 -> Red Light
@@ -206,9 +230,38 @@ void GPIO_SetUp(){
 
 
 
-/*-----------------------------------------------------------*/
+/*--------------------------Functions DDS---------------------*/
+// creates dd_task struct and sends it to DDS to handle
+void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline){
+	struct dd_task newDD;
 
-/*-----------------------------------------------------------*/
+	newDD.t_handle=t_handle;
+	newDD.type=type;	
+	newDD.task_id=task_id;
+	newDD.release_time; // current tick count
+	newDD.absolute_deadline=absolute_deadline; // This will be in ticks. Must be calculated by the task generator function
+	newDD.completion_time; // leave empty for now
+
+	// Send the new task to the DDS task (e.g., through a FreeRTOS queue)
+	if (xQueueSend(dd_task_queue, &newDD, portMAX_DELAY) != pdPASS){
+		printf("Could not send to dd task queue");
+	}
+}
+
+void complete_dd_task(uint32_t task_id){
+	// Send the task ID of the completed task to the DDS through a queue
+	//! portMax delay will block the function indefinetely till space opens. This should never occurr in the current setup
+	if (xQueueSend(completed_task_queue, task_id, portMAX_DELAY) != pdPASS){
+		printf("Could not send to completed task Queue")
+		}
+}
+
+// idk what the * are for
+// will probably return a pointer
+**dd_task_list get_active_dd_task_list(void);
+**dd_task_list get_complete_dd_task_list(void);
+**dd_task_list get_overdue_dd_task_list(void);
+/*--------------------------Helper Functions--------------------*/
 
 void vApplicationMallocFailedHook( void )
 {
