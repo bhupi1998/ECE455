@@ -29,6 +29,14 @@
 #define red_led		LED5
 #define blue_led	LED6
 
+#define BENCH 1 // used to change test bench setup
+
+// Executiong delays
+#define DELAY95 10000
+#define DELAY100 10000
+#define DELAY150 10000
+#define DELAY200 10000
+#define DELAY250 10000
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
  * that was not already performed before main() was called.
@@ -104,6 +112,11 @@ int main(void)
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 
+	// Ftasks // These tasks just turn an led on for the requested period of time.
+	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL)
+	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,NULL)
+	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,NULL)
+
 	/*
 	led usage
 	STM_EVAL_LEDOn(amber_led);
@@ -117,7 +130,7 @@ int main(void)
 	return 0;
 }
 
-/*---------------------Tasks----------------------------------------*/
+/*---------------------DDS-Tasks----------------------------------------*/
 
 static void deadline_Driven_Scheduler_Task(void *pvParameters){
 
@@ -128,7 +141,50 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 static void monitor_Task(void *pvParameters){
 
 }
+/*--------------------User Tasks---------------------------------------*/
+// need to do testing to determine correct for loop value for each execution time.
+// can simply use an oscillosope. Use GPIO set up from previous lab and select one pin as output.
+static void F_task1(void *pvParameters){
+	while(1){
+		STM_EVAL_LEDOn(amber_led);
+		if(BENCH == 1){
+			for(i=0;i<DELAY95;i++){}
+		}else if(BENCH==2){
+			for(i=0;i<DELAY95;i++){}
+		}else if(BENCH==3){
+			for(i=0;i<DELAY100;i++){}
+		}
+		STM_EVAL_LEDOff(amber_led);
+	}
+}
 
+static void F_task2(void *pvParameters){
+	while(1){
+		STM_EVAL_LEDOn(blue_led);
+		if(BENCH == 1){
+			for(i=0;i<DELAY150;i++){}
+		}else if(BENCH==2){
+			for(i=0;i<DELAY150;i++){}
+		}else if(BENCH==3){
+			for(i=0;i<DELAY200;i++){}
+		}
+		STM_EVAL_LEDOff(blue_led);
+	}
+}
+
+static void F_task1(void *pvParameters){
+	while(1){
+		STM_EVAL_LEDOn(red_led);
+		if(BENCH == 1){
+			for(i=0;i<DELAY250;i++){}
+		}else if(BENCH==2){
+			for(i=0;i<DELAY250;i++){}
+		}else if(BENCH==3){
+			for(i=0;i<DELAY200;i++){}
+		}
+		STM_EVAL_LEDOff(red_led);
+	}
+}
 /*-----------------Helper Functions & Setup-------------------------*/
 /*
  * Function sets up the ports for outputs and ADC
