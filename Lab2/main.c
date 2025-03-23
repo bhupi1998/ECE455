@@ -145,7 +145,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 	static dd_task_list *completed_List = NULL;
 	static dd_task_list *overdue_List = NULL;
 
-	struct dd_task received_task;
+	uint32_t received_task_ID;
 
 	while(1){
 		// a new task was added
@@ -154,7 +154,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// NEED TO ASSIGN RELEASE TIME 
 			received_task.release_time = xTaskGetTickCount();
 			// ADD TO ACTIVE LIST
-			struct dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node));
+			struct dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node)); // never freed since they just get moved in completed or overdue later
 
 			new_Node->task = received_task; // make new linked list item
 			new_Node->next_task = active_List; // make it point to the previous head of the list
@@ -172,7 +172,53 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			if(active_List != NULL)
 				vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
 			// Lower priority of all other task
-				struct dd_task_list *curr =active_List->next_task;
+			struct dd_task_list *curr =active_List->next_task;
+			while(curr != NULL){
+				vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
+				curr = curr->next_task;
+			}
+			// Set a timer here that will go at absolute deadline for the high priority task
+			// if timer goes off the task is added to overdue list and is put to sleep.
+		}
+		// a task has completed. Receives the ID of the task
+		if(xQueueReceive(completed_task_queue, &received_task_ID, portMAX_DELAY) == pdPASS){
+			struct dd_task_list *curr = active_List;
+			// find task with ID
+			while(curr != NULL){
+				if(curr->task.task_id == received_task_ID){
+					break;
+				}
+				curr = curr->next_task;
+			}
+			if(curr == NULL){
+				printf("Invalid ID-completed_dd_task\n");
+			}else{
+        		// Remove from active_List
+        		if (curr->prev_task != NULL)
+            		curr->prev_task->next_task = curr->next_task;
+        		else
+            		active_List = curr->next_task; // was head
+
+       			if (curr->next_task != NULL)
+            		curr->next_task->prev_task = curr->prev_task;
+				
+				curr->task.completion_time = xTaskGetTickCount();
+				// Insert into completed_List at the head
+				curr->next_task = completed_List;
+				curr->prev_task = NULL;
+				
+				if (completed_List != NULL)
+					completed_List->prev_task = curr;
+				
+				completed_List = curr;
+			}
+			// SET USER TASK PRIORITY AGAIN
+			// Make this a function in the future
+			// EDF task gets highest priority
+			if(active_List != NULL)
+				vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
+			// Lower priority of all other task
+			struct dd_task_list *curr =active_List->next_task;
 			while(curr != NULL){
 				vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
 				curr = curr->next_task;
