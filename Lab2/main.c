@@ -31,6 +31,9 @@
 
 #define BENCH 1 // used to change test bench setup
 
+#define TASK_HIGH_PRIORITY 10
+#define TASK_LOW_PRIORITY 1
+
 // Executiong delays
 #define DELAY95 10000
 #define DELAY100 10000
@@ -51,7 +54,7 @@ QueueHandle_t  dd_task_queue, completed_task_queue;
 /*-----------------------------------------------------------*/
 
 /*------------------------Structs-----------------------*/
-enum task_type {PERIODIC, APERIODIC}
+enum task_type {PERIODIC, APERIODIC};
 
 struct dd_task {
 	TaskHandle_t t_handle;
@@ -60,23 +63,28 @@ struct dd_task {
 	uint32_t release_time;
 	uint32_t absolute_deadline;
 	uint32_t completion_time;
-}
+};
 
+// using doubly linked lists for easy deletion.
 struct dd_task_list {
 	dd_task task;
-	struct dd_task_list *next_task
-}
+	struct dd_task_list *next_task;
+	struct dd_task_list *prev_task;
+
+};
 /*-------------------Functions-----------------------------*/
 /*Function declarations*/
 void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline);
 void complete_dd_task(uint32_t task_id);
-// idk what the * are for
-// will probably return a pointer
-**dd_task_list get_active_dd_task_list(void);
-**dd_task_list get_complete_dd_task_list(void);
-**dd_task_list get_overdue_dd_task_list(void);
+// return pointer of the head of the list
+struct dd_task_list* get_active_dd_task_list(void);
+struct dd_task_list* get_complete_dd_task_list(void);
+struct dd_task_list* get_overdue_dd_task_list(void);
 // Setting up gpio
 void GPIO_SetUp();
+
+// Sorting algorithm
+struct dd_task_list* EDF_Sort(struct dd_task_list* head)
 
 
 
@@ -112,9 +120,9 @@ int main(void)
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 
 	// Ftasks // These tasks just turn an led on for the requested period of time.
-	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL)
-	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,NULL)
-	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,NULL)
+	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 
 	/*
 	led usage
@@ -133,9 +141,9 @@ int main(void)
 
 static void deadline_Driven_Scheduler_Task(void *pvParameters){
 	// these lists contain the head of the list
-	static dd_task_list active_List = NULL;
-	static dd_task_list completed_List = NULL;
-	static dd_task_list overdue_List = NULL;
+	static dd_task_list *active_List = NULL;
+	static dd_task_list *completed_List = NULL;
+	static dd_task_list *overdue_List = NULL;
 
 	struct dd_task received_task;
 
@@ -146,15 +154,29 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// NEED TO ASSIGN RELEASE TIME 
 			received_task.release_time = xTaskGetTickCount();
 			// ADD TO ACTIVE LIST
-			//! i don't think a linked list is being created here!
-			dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node));
-			new_Node.task = received_task; // make new linked list item
-			new_Node.next_task = NULL; // make it point to the previous tail of the list
+			struct dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node));
+
+			new_Node->task = received_task; // make new linked list item
+			new_Node->next_task = active_List; // make it point to the previous head of the list
+			new_Node->prev_task = NULL; // since it's the head it has nothing to point back to
+
+			if(active_List != NULL){
+				active_List->prev_task = new_Node;
+			}
 			active_List = new_Node; // update the head
 
 			// SORT BY DEADLINE
-
+			active_List = EDF_Sort(active_List);
 			// SET USER TASK PRIORITY
+			// EDF task gets highest priority
+			if(active_List != NULL)
+				vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
+			// Lower priority of all other task
+				struct dd_task_list *curr =active_List->next_task;
+			while(curr != NULL){
+				vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
+				curr = curr->next_task;
+			}
 		}
 	}
 
@@ -196,7 +218,7 @@ static void F_task2(void *pvParameters){
 	}
 }
 
-static void F_task1(void *pvParameters){
+static void F_task3(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(red_led);
 		if(BENCH == 1){
@@ -238,9 +260,9 @@ void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, ui
 	newDD.t_handle=t_handle;
 	newDD.type=type;	
 	newDD.task_id=task_id;
-	newDD.release_time; // current tick count
+	newDD.release_time; // set by DDS
 	newDD.absolute_deadline=absolute_deadline; // This will be in ticks. Must be calculated by the task generator function
-	newDD.completion_time; // leave empty for now
+	newDD.completion_time; // Set by DDS once task has run
 
 	// Send the new task to the DDS task (e.g., through a FreeRTOS queue)
 	if (xQueueSend(dd_task_queue, &newDD, portMAX_DELAY) != pdPASS){
@@ -262,6 +284,48 @@ void complete_dd_task(uint32_t task_id){
 **dd_task_list get_complete_dd_task_list(void);
 **dd_task_list get_overdue_dd_task_list(void);
 /*--------------------------Helper Functions--------------------*/
+// Sorts a single linked lists by earliest absolute deadline.
+// The head of the list will always be the highest priority.
+// Earliest to latest deadline by using insertion sort
+// Reference: https://www.geeksforgeeks.org/insertion-sort-doubly-linked-list/
+struct dd_task_list* EDF_Sort(struct dd_task_list* head){
+	if(head == NULL) return head;
+
+	struct dd_task_list* sorted = NULL; // head for sorted list
+	struct dd_task_list* curr = head;
+
+	while (curr != NULL){
+		struct dd_task_list* next = curr->next_task;
+
+		if(sorted == NULL || sorted->task.absolute_deadline > curr->task.absolute_deadline){
+			curr->next_task = sorted;
+
+			if(sorted != NULL) 
+				sorted->prev_task = curr;
+
+			sorted = curr;
+			sorted->prev_task=NULL;
+		}else{
+			struct dd_task_list* current_sorted = sorted;
+
+			//insert between elements
+			while(current_sorted->next_task != NULL && current_sorted->next_task->task.absolute_deadline < curr->task.absolute_deadline)
+			{
+				current_sorted = current_sorted->next_task;
+			}
+
+			curr->next_task = current_sorted->next_task;
+			if(current_sorted->next_task != NULL){
+				current_sorted->next_task->prev_task=curr;
+			}
+
+			current_sorted->next_task = curr;
+			curr->prev_task = current_sorted;
+		}
+		curr = next;
+	}
+	return sorted;
+}
 
 void vApplicationMallocFailedHook( void )
 {
