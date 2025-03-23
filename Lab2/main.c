@@ -52,13 +52,14 @@ static void prvSetupHardware( void );
 
 
 
-QueueHandle_t  dd_task_queue, completed_task_queue, overdue_task_queue;
+QueueHandle_t  dd_task_queue, completed_task_queue, overdue_task_queue, request_list_queue;
 
 
 /*-----------------------------------------------------------*/
 
 /*------------------------Structs-----------------------*/
 enum task_type {PERIODIC, APERIODIC};
+enum list_request_type{ACTIVE_LIST, COMPLETED_LIST, OVERDUE_LIST};
 
 struct dd_task {
 	TaskHandle_t t_handle;
@@ -77,6 +78,11 @@ struct dd_task_list {
 	struct dd_task_list *prev_task;
 
 };
+
+struct list_Request {
+	uint8_t list_Type; // which list is being requested
+	QueueHandle_t response_Queue; //queue handler where the dds should send the
+}
 /*-------------------Functions-----------------------------*/
 /*Function declarations*/
 void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline);
@@ -120,6 +126,9 @@ int main(void)
 
 	// timer will write to this queue if task is overdue.
 	overdue_task_queue = xQueueCreate(10, sizeof(uint32_t));
+
+	// Queue for requesting lists from DDS
+	request_list_queue = xQueueCreate(10,sizeof(struct list_Request));
 	/* Add to the registry, for the benefit of kernel aware debugging. */
 	vQueueAddToRegistry( dd_task_queue, "DD_TASK_Q" );
 	vQueueAddToRegistry( completed_task_queue, "Comp_Q" );
@@ -153,6 +162,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 	static dd_task_list *overdue_List = NULL;
 	
 	struct dd_task received_task;
+	struct list_Request request_List;
 
 	uint32_t completed_task_ID;
 	uint32_t overdue_task_ID;
@@ -262,6 +272,27 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
 		}
+		if (xQueueReceive(request_list_queue, &request_List, portMAX_DELAY) == pdPASS)
+		{
+			struct dd_task_list *response = NULL;
+			switch (request_List.list_Type)
+			{
+			case ACTIVE_LIST:
+				response = active_List;
+				break;
+			case COMPLETED_LIST:
+				response = completed_List;
+				break;
+			case OVERDUE_LIST:
+				response = overdue_List;
+			break;
+			default:
+				print("Invalide list request");
+				break;
+			}
+		// send back response
+		xQueueSend(request_List.response_Queue, &resp, portMAX_DELAY);
+		}
 	}
 
 }
@@ -362,11 +393,33 @@ void complete_dd_task(uint32_t task_id){
 		}
 }
 
-// idk what the * are for
-// will probably return a pointer
-**dd_task_list get_active_dd_task_list(void);
-**dd_task_list get_complete_dd_task_list(void);
-**dd_task_list get_overdue_dd_task_list(void);
+struct dd_task_list* get_active_dd_task_list(void){
+	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
+	struct dd_task_list *list = NULL; 
+	struct list_Request request = {ACTIVE_LIST, sendBack_Queue};
+	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
+	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
+	xQueueDelete(sendBack_Queue);
+	return list;
+}
+struct dd_task_list* get_complete_dd_task_list(void){
+	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
+	struct dd_task_list *list = NULL; 
+	struct list_Request request = {COMPLETED_LIST, sendBack_Queue};
+	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
+	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
+	xQueueDelete(sendBack_Queue);
+	return list;
+}
+struct dd_task_list* get_overdue_dd_task_list(void){
+	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
+	struct dd_task_list *list = NULL; 
+	struct list_Request request = {OVERDUE_LIST, sendBack_Queue};
+	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
+	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
+	xQueueDelete(sendBack_Queue);
+	return list;
+}
 /*--------------------------Helper Functions--------------------*/
 // Sorts a single linked lists by earliest absolute deadline.
 // The head of the list will always be the highest priority.
