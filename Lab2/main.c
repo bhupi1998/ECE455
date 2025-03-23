@@ -14,6 +14,7 @@
 #include "../FreeRTOS_Source/include/timers.h"
 
 // including libraries for GPIO and ADC Set up
+// not needed, artifact from lab 1
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_gpio.h"
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_rcc.h"
 #include "../Libraries/STM32F4xx_StdPeriph_Driver/inc/stm32f4xx_adc.h"
@@ -34,6 +35,9 @@
 #define TASK_HIGH_PRIORITY 10
 #define TASK_LOW_PRIORITY 1
 
+#define DDS_PRIORITY 11
+#define GEN_PRIORITY 1
+#define MONITOR_PRIORITY 1
 // Executiong delays
 #define DELAY95 10000
 #define DELAY100 10000
@@ -84,9 +88,10 @@ struct dd_task_list* get_overdue_dd_task_list(void);
 void GPIO_SetUp();
 
 // Sorting algorithm
-struct dd_task_list* EDF_Sort(struct dd_task_list* head)
+struct dd_task_list* EDF_Sort(struct dd_task_list* head);
 
-
+// set task priorities
+void set_dds_Task_Priority(struct dd_task_list* active_List);
 
 
 /*-----------------------------------------------------------*/
@@ -115,9 +120,9 @@ int main(void)
 
 
 	// DDS Core
-	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE,NULL,DDS_PRIORITY,NULL);
+	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,GEN_PRIORITY,NULL);
+	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,MONITOR_PRIORITY,NULL);
 
 	// Ftasks // These tasks just turn an led on for the requested period of time.
 	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL);
@@ -168,15 +173,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// SORT BY DEADLINE
 			active_List = EDF_Sort(active_List);
 			// SET USER TASK PRIORITY
-			// EDF task gets highest priority
-			if(active_List != NULL)
-				vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
-			// Lower priority of all other task
-			struct dd_task_list *curr =active_List->next_task;
-			while(curr != NULL){
-				vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
-				curr = curr->next_task;
-			}
+			set_dds_Task_Priority(active_List);
 			// Set a timer here that will go at absolute deadline for the high priority task
 			// if timer goes off the task is added to overdue list and is put to sleep.
 		}
@@ -213,16 +210,8 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				completed_List = curr;
 			}
 			// SET USER TASK PRIORITY AGAIN
-			// Make this a function in the future
-			// EDF task gets highest priority
-			if(active_List != NULL)
-				vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
-			// Lower priority of all other task
-			struct dd_task_list *curr =active_List->next_task;
-			while(curr != NULL){
-				vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
-				curr = curr->next_task;
-			}
+			set_dds_Task_Priority(active_List);
+
 		}
 	}
 
@@ -372,7 +361,19 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 	}
 	return sorted;
 }
-
+// Takes in sorted active list. Sets head to high priority and the rest to low.
+void set_dds_Task_Priority(struct dd_task_list* active_List)
+{
+	// EDF task gets highest priority
+	if(active_List != NULL)
+		vTaskPrioritySet(active_List->task.t_handle, TASK_HIGH_PRIORITY);
+	// Lower priority of all other task
+	struct dd_task_list *curr =active_List->next_task;
+	while(curr != NULL){
+		vTaskPrioritySet(curr->task.t_handle, TASK_LOW_PRIORITY);
+		curr = curr->next_task;
+	}
+}
 void vApplicationMallocFailedHook( void )
 {
 	/* The malloc failed hook is enabled by setting
