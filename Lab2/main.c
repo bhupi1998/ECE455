@@ -67,7 +67,7 @@ struct dd_task {
 	uint32_t release_time;
 	uint32_t absolute_deadline;
 	uint32_t completion_time;
-	TimerHandle_t timer_handle; // added so that associated timer can be found.
+	TimerHandle_t timer_Handle; // added so that associated timer can be found.
 };
 
 // using doubly linked lists for easy deletion.
@@ -99,9 +99,9 @@ void overdue_Timer_Callback(TimerHandle_t xTimer);
 
 /*-----------------------------------------------------------*/
 /*----------------------------DDS Functions----------------------*/
-static void deadline_Driven_Scheduler_Task(void *pvParameters)
-static void DDS_Task_Gen_Task(void *pvParameters)
-static void monitor_Task(void *pvParameters)
+static void deadline_Driven_Scheduler_Task(void *pvParameters);
+static void DDS_Task_Gen_Task(void *pvParameters);
+static void monitor_Task(void *pvParameters);
 /*-----------------------------------------------------------*/
 int main(void)
 {
@@ -131,18 +131,13 @@ int main(void)
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,GEN_PRIORITY,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,MONITOR_PRIORITY,NULL);
 
+	// USER Defined Tasks
 	// Ftasks // These tasks just turn an led on for the requested period of time.
 	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,NULL);
 
-	/*
-	led usage
-	STM_EVAL_LEDOn(amber_led);
-	STM_EVAL_LEDOff(blue_led);
-	*/
 
-	// USER Defined Tasks
 	/* Start the tasks and timer running. */
 	vTaskStartScheduler();
 
@@ -169,9 +164,9 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// NEED TO ASSIGN RELEASE TIME 
 			received_task.release_time = xTaskGetTickCount();
 			// Create timer to check if task is overdue
-			TickType_t timerPeriod = received_task.absolute_deadline-received_task.release_time
-			overdue_Timer= xTimerCreate("Overdue Timer",,pdFALSE,received_task.task_id,overdue_Timer_Callback);
-			received_task.timer_handle= overdue_Timer; // the handle will be unique to each instance of timer
+			TickType_t timerPeriod = received_task.absolute_deadline-received_task.release_time;
+			overdue_Timer= xTimerCreate("Overdue Timer",timerPeriod,pdFALSE,received_task.task_id,overdue_Timer_Callback);
+			received_task.timer_Handle= overdue_Timer; // the handle will be unique to each instance of timer
 
 			// ADD TO ACTIVE LIST
 			struct dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node)); // never freed since they just get moved in completed or overdue later
@@ -230,9 +225,42 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// Message from timer about an overdue task received
-		if (xQueueReceive(overdue_task_queue, &received_task, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, portMAX_DELAY) == pdPASS)
 		{
-			// TODODODODODODODODDODDODOD BABY SHARK DODODODODODODODODODO 
+			struct dd_task_list *curr = active_List;
+			// find task with ID
+			while(curr != NULL){
+				if(curr->task.task_id == overdue_task_ID){
+					break;
+				}
+				curr = curr->next_task;
+			}
+			if(curr == NULL){
+				printf("Invalid overdue task ID-\n");
+			}else{
+				// delete the timer since the task has completed
+				xTimerDelete(curr->task.timer_Handle,0);
+        		// Remove from active_List and move to completed
+        		if (curr->prev_task != NULL)
+            		curr->prev_task->next_task = curr->next_task;
+        		else
+            		active_List = curr->next_task; // was head
+
+       			if (curr->next_task != NULL)
+            		curr->next_task->prev_task = curr->prev_task;
+				
+				curr->task.completion_time = xTaskGetTickCount();
+				// Insert into completed_List at the head
+				curr->next_task = overdue_List;
+				curr->prev_task = NULL;
+				
+				if (overdue_List != NULL)
+				overdue_List->prev_task = curr;
+				
+				overdue_List = curr;
+			}
+			// SET USER TASK PRIORITY AGAIN
+			set_dds_Task_Priority(active_List);
 		}
 	}
 
@@ -398,7 +426,7 @@ void set_dds_Task_Priority(struct dd_task_list* active_List)
 // sends message to overdue queue so that DDS can handle overdue task
 void overdue_Timer_Callback(TimerHandle_t xTimer){
 	uint32_t task_id = (uint32_t)pvTimerGetTimerID(xTimer); // the ID of the timer is set the same as the task
-	if (xQueueSend(overdue_task_queue, task_id, portMAX_DELAY) != pdPASS){
+	if (xQueueSend(overdue_task_queue, &task_id, portMAX_DELAY) != pdPASS){
 		printf("Could not send to overdue task Queue");
 		}
 }
