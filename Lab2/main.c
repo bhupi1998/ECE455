@@ -32,11 +32,11 @@
 
 #define BENCH 1 // used to change test bench setup
 
-#define TASK_HIGH_PRIORITY 10
+#define TASK_HIGH_PRIORITY 2
 #define TASK_LOW_PRIORITY 1
 
-#define DDS_PRIORITY 11
-#define GEN_PRIORITY 1
+#define DDS_PRIORITY 4
+#define GEN_PRIORITY 3
 #define MONITOR_PRIORITY 1
 // Executiong delays
 #define DELAY95 10000
@@ -44,6 +44,7 @@
 #define DELAY150 10000
 #define DELAY200 10000
 #define DELAY250 10000
+
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
  * that was not already performed before main() was called.
@@ -68,7 +69,8 @@ struct dd_task {
 	uint32_t release_time;
 	uint32_t absolute_deadline;
 	uint32_t completion_time;
-	TimerHandle_t timer_Handle; // added so that associated timer can be found.
+	TimerHandle_t timer_Handle; // This is used for overdue timer handling.
+	uint32_t period; // used by task generator. Allows to use one struct  
 };
 
 // using doubly linked lists for easy deletion.
@@ -82,8 +84,9 @@ struct dd_task_list {
 struct list_Request {
 	uint8_t list_Type; // which list is being requested
 	QueueHandle_t response_Queue; //queue handler where the dds should send the
-}
-/*-------------------Functions-----------------------------*/
+};
+
+/*------------------Functions-----------------------------*/
 /*Function declarations*/
 void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline);
 void complete_dd_task(uint32_t task_id);
@@ -140,11 +143,7 @@ int main(void)
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,GEN_PRIORITY,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,MONITOR_PRIORITY,NULL);
 
-	// USER Defined Tasks
-	// Ftasks // These tasks just turn an led on for the requested period of time.
-	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,NULL);
-	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,NULL);
+	// F tasks created in task generator.
 
 
 	/* Start the tasks and timer running. */
@@ -179,7 +178,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			received_task.timer_Handle= overdue_Timer; // the handle will be unique to each instance of timer
 
 			// ADD TO ACTIVE LIST
-			struct dd_task_list *new_Node = pvPortMalloc(sizeof(dd_task_node)); // never freed since they just get moved in completed or overdue later
+			struct dd_task_list *new_Node = pvPortMalloc(sizeof(struct dd_task_node)); // never freed since they just get moved in completed or overdue later
 
 			new_Node->task = received_task; // make new linked list item
 			new_Node->next_task = active_List; // make it point to the previous head of the list
@@ -291,13 +290,56 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				break;
 			}
 		// send back response
-		xQueueSend(request_List.response_Queue, &resp, portMAX_DELAY);
+		xQueueSend(request_List.response_Queue, &response, portMAX_DELAY);
 		}
 	}
 
 }
-static void DDS_Task_Gen_Task(void *pvParameters){
 
+// generates a new task based on period.
+static void DDS_Task_Gen_Task(void *pvParameters){
+	// initial set up.
+	static uint32_t task1_Period_Ticks,task2_Period_Ticks,task3_Period_Ticks;
+	static struct dd_task task1_info, task2_info, task3_info; // stores information for timers
+	// for easy switching between test benches
+	switch(BENCH){
+		case 1:
+			task1_info.period = pdMS_TO_TICKS(500); 
+			task2_info.period = pdMS_TO_TICKS(500); 
+			task3_info.period = pdMS_TO_TICKS(750); 
+		break;
+		case 2:
+			task1_info.period = pdMS_TO_TICKS(250); 
+			task2_info.period = pdMS_TO_TICKS(500); 
+			task3_info.period = pdMS_TO_TICKS(750); 
+		break;
+		case 3:
+			task1_info.period = pdMS_TO_TICKS(500); 
+			task2_info.period = pdMS_TO_TICKS(500); 
+			task3_info.period = pdMS_TO_TICKS(500); 
+		break;
+	}
+	// Ftasks // These tasks just turn an led on for the requested period of time.
+	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+	uint32_t current_Time = xTaskGetTickCount();
+	// assign ID for each task
+	task1_info.task_id=1;
+	task2_info.task_id=2;
+	task3_info.task_id=3;
+	// assign task type
+	task1_info.type = PERIODIC;
+	task2_info.type = PERIODIC;
+	task3_info.type = PERIODIC;
+	// Initial set up with absolute deadline
+	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+	// Create timers for each task period
+	while(1){
+
+	}
 }
 static void monitor_Task(void *pvParameters){
 
@@ -309,13 +351,15 @@ static void F_task1(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(amber_led);
 		if(BENCH == 1){
-			for(i=0;i<DELAY95;i++){}
+			for(int i=0;i<DELAY95;i++){}
 		}else if(BENCH==2){
-			for(i=0;i<DELAY95;i++){}
+			for(int i=0;i<DELAY95;i++){}
 		}else if(BENCH==3){
-			for(i=0;i<DELAY100;i++){}
+			for(int i=0;i<DELAY100;i++){}
 		}
 		STM_EVAL_LEDOff(amber_led);
+		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
+		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
 	}
 }
 
@@ -323,13 +367,15 @@ static void F_task2(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(blue_led);
 		if(BENCH == 1){
-			for(i=0;i<DELAY150;i++){}
+			for(int i=0;i<DELAY150;i++){}
 		}else if(BENCH==2){
-			for(i=0;i<DELAY150;i++){}
+			for(int i=0;i<DELAY150;i++){}
 		}else if(BENCH==3){
-			for(i=0;i<DELAY200;i++){}
+			for(int i=0;i<DELAY200;i++){}
 		}
 		STM_EVAL_LEDOff(blue_led);
+		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
+		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
 	}
 }
 
@@ -337,13 +383,15 @@ static void F_task3(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(red_led);
 		if(BENCH == 1){
-			for(i=0;i<DELAY250;i++){}
+			for(int i=0;i<DELAY250;i++){}
 		}else if(BENCH==2){
-			for(i=0;i<DELAY250;i++){}
+			for(int i=0;i<DELAY250;i++){}
 		}else if(BENCH==3){
-			for(i=0;i<DELAY200;i++){}
+			for(int i=0;i<DELAY200;i++){}
 		}
 		STM_EVAL_LEDOff(red_led);
+		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
+		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
 	}
 }
 /*-----------------------Setup-------------------------*/
