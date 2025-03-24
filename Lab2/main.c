@@ -35,15 +35,15 @@
 #define TASK_HIGH_PRIORITY 2
 #define TASK_LOW_PRIORITY 1
 
-#define DDS_PRIORITY 4
-#define GEN_PRIORITY 3
-#define MONITOR_PRIORITY 1
+#define DDS_PRIORITY 8
+#define GEN_PRIORITY 2
+#define MONITOR_PRIORITY 3
 // Executiong delays
-#define DELAY95 10000
-#define DELAY100 10000
-#define DELAY150 10000
-#define DELAY200 10000
-#define DELAY250 10000
+#define DELAY95 100
+#define DELAY100 100
+#define DELAY150 100
+#define DELAY200 100
+#define DELAY250 100
 
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
@@ -140,7 +140,7 @@ int main(void)
 	request_list_queue = xQueueCreate(3,sizeof(struct list_Request));
 
 	// task id of tasks to release by the generator here
-	generate_queue = xQueueCreate(10,sizeof(uint32_t));
+	generate_queue = xQueueCreate(3,sizeof(uint32_t));
 	/* Add to the registry, for the benefit of kernel aware debugging. */
 	vQueueAddToRegistry( dd_task_queue, "DD_TASK_Q" );
 	vQueueAddToRegistry( completed_task_queue, "Comp_Q" );
@@ -163,7 +163,7 @@ int main(void)
 
 /*---------------------DDS-Tasks----------------------------------------*/
 
-static void deadline_Driven_Scheduler_Task(void *pvParameters){
+void deadline_Driven_Scheduler_Task(void *pvParameters){
 	// these lists contain the head of the list
 	static struct dd_task_list *active_List = NULL;
 	static struct dd_task_list *completed_List = NULL;
@@ -205,11 +205,11 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			set_dds_Task_Priority(active_List);
 		}
 		// a task has completed. Receives the ID of the task
-		if(xQueueReceive(completed_task_queue, &completed_task_ID, portMAX_DELAY) == pdPASS){
+		else if(xQueueReceive(completed_task_queue, &completed_task_ID, portMAX_DELAY) == pdPASS){
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
-				printf("task ID given:%d Curr task ID %d \n",completed_task_ID,curr->task.task_id);
+
 				if(curr->task.task_id == completed_task_ID){
 					break;
 				}
@@ -278,7 +278,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				overdue_List->prev_task = curr;
 
 				overdue_List = curr;
-				vTaskDelete(curr->task.t_handle); // suspend task
+				vTaskDelete(curr->task.t_handle); // delete task
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
@@ -345,8 +345,8 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	task3_info.type = PERIODIC;
 	// Initial set up with absolute deadline
 	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
-	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
-	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+	//create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+	//create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	// Create timers for each task period
 	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback);
 	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback);
@@ -384,7 +384,7 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 }
 // prints the number of tasks in active, overdue and completed
 static void monitor_Task(void *pvParameters){
-	const TickType_t xDelay = pdMS_TO_TICKS(1500); // updates every hyper period
+	const TickType_t xDelay = pdMS_TO_TICKS(500); // updates every hyper period
 	struct dd_task_list *active, *completed, *overdue;
 	while(1){
 		int activeCount=0, completedCount=0, overdueCount=0;
@@ -484,9 +484,9 @@ void create_dd_task( TaskHandle_t t_handle,	char type,	uint32_t task_id, uint32_
 	newDD.t_handle=t_handle;
 	newDD.type=type;
 	newDD.task_id=task_id;
-	newDD.release_time; // set by DDS
+	newDD.release_time=NULL; // set by DDS
 	newDD.absolute_deadline=absolute_deadline; // This will be in ticks. Must be calculated by the task generator function
-	newDD.completion_time; // Set by DDS once task has run
+	newDD.completion_time=NULL; // Set by DDS once task has run
 
 	// Send the new task to the DDS task (e.g., through a FreeRTOS queue)
 	if (xQueueSend(dd_task_queue, &newDD, portMAX_DELAY) != pdPASS){
