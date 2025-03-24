@@ -64,18 +64,18 @@ enum list_request_type{ACTIVE_LIST, COMPLETED_LIST, OVERDUE_LIST};
 
 struct dd_task {
 	TaskHandle_t t_handle;
-	task_type type;	
+	char type;
 	uint32_t task_id;
 	uint32_t release_time;
 	uint32_t absolute_deadline;
 	uint32_t completion_time;
 	TimerHandle_t timer_Handle; // This is used for overdue timer handling.
-	uint32_t period; // used by task generator. Allows to use one struct  
+	uint32_t period; // used by task generator. Allows to use one struct
 };
 
 // using doubly linked lists for easy deletion.
 struct dd_task_list {
-	dd_task task;
+	struct dd_task task;
 	struct dd_task_list *next_task;
 	struct dd_task_list *prev_task;
 
@@ -88,12 +88,16 @@ struct list_Request {
 
 /*------------------Functions-----------------------------*/
 /*Function declarations*/
-void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline);
+void create_dd_task( TaskHandle_t t_handle,	char type,	uint32_t task_id, uint32_t absolute_deadline);
 void complete_dd_task(uint32_t task_id);
 // return pointer of the head of the list
 struct dd_task_list* get_active_dd_task_list(void);
 struct dd_task_list* get_complete_dd_task_list(void);
 struct dd_task_list* get_overdue_dd_task_list(void);
+
+void F_task1(void *pvParameters);
+void F_task2(void *pvParameters);
+void F_task3(void *pvParameters);
 // Setting up gpio
 void GPIO_SetUp();
 
@@ -125,7 +129,7 @@ int main(void)
 
 	// space for 10 tasks might be excessive since the DDS will clear it out right away
 	dd_task_queue = xQueueCreate(10, sizeof(struct dd_task));
-	
+
 	// contains taskID
 	completed_task_queue = xQueueCreate(10, sizeof(uint32_t));
 
@@ -161,10 +165,10 @@ int main(void)
 
 static void deadline_Driven_Scheduler_Task(void *pvParameters){
 	// these lists contain the head of the list
-	static dd_task_list *active_List = NULL;
-	static dd_task_list *completed_List = NULL;
-	static dd_task_list *overdue_List = NULL;
-	
+	static struct dd_task_list *active_List = NULL;
+	static struct dd_task_list *completed_List = NULL;
+	static struct dd_task_list *overdue_List = NULL;
+
 	struct dd_task received_task;
 	struct list_Request request_List;
 
@@ -175,7 +179,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 		// a new task was added
 		if (xQueueReceive(dd_task_queue, &received_task, portMAX_DELAY) == pdPASS)
 		{
-			// NEED TO ASSIGN RELEASE TIME 
+			// NEED TO ASSIGN RELEASE TIME
 			received_task.release_time = xTaskGetTickCount();
 			// Create timer to check if task is overdue
 			TickType_t timerPeriod = received_task.absolute_deadline-received_task.release_time;
@@ -205,6 +209,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
+				printf("task ID given:%d Curr task ID %d \n",completed_task_ID,curr->task.task_id);
 				if(curr->task.task_id == completed_task_ID){
 					break;
 				}
@@ -223,15 +228,15 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 
        			if (curr->next_task != NULL)
             		curr->next_task->prev_task = curr->prev_task;
-				
+
 				curr->task.completion_time = xTaskGetTickCount();
 				// Insert into completed_List at the head
 				curr->next_task = completed_List;
 				curr->prev_task = NULL;
-				
+
 				if (completed_List != NULL)
 					completed_List->prev_task = curr;
-				
+
 				completed_List = curr;
 				vTaskDelete(curr->task.t_handle); // Delete Task
 			}
@@ -263,17 +268,17 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 
        			if (curr->next_task != NULL)
             		curr->next_task->prev_task = curr->prev_task;
-				
+
 				curr->task.completion_time = xTaskGetTickCount();
 				// Insert into completed_List at the head
 				curr->next_task = overdue_List;
 				curr->prev_task = NULL;
-				
+
 				if (overdue_List != NULL)
 				overdue_List->prev_task = curr;
-				
+
 				overdue_List = curr;
-				vTaskDelete(curr->task.t_handle); // suspend task 
+				vTaskDelete(curr->task.t_handle); // suspend task
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
@@ -293,7 +298,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				response = overdue_List;
 			break;
 			default:
-				printf("Invalide list request");
+				printf("Invalid list request");
 				break;
 			}
 		// send back response
@@ -310,19 +315,19 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	// for easy switching between test benches
 	switch(BENCH){
 		case 1:
-			task1_info.period = pdMS_TO_TICKS(500); 
-			task2_info.period = pdMS_TO_TICKS(500); 
-			task3_info.period = pdMS_TO_TICKS(750); 
+			task1_info.period = pdMS_TO_TICKS(500);
+			task2_info.period = pdMS_TO_TICKS(500);
+			task3_info.period = pdMS_TO_TICKS(750);
 		break;
 		case 2:
-			task1_info.period = pdMS_TO_TICKS(250); 
-			task2_info.period = pdMS_TO_TICKS(500); 
-			task3_info.period = pdMS_TO_TICKS(750); 
+			task1_info.period = pdMS_TO_TICKS(250);
+			task2_info.period = pdMS_TO_TICKS(500);
+			task3_info.period = pdMS_TO_TICKS(750);
 		break;
 		case 3:
-			task1_info.period = pdMS_TO_TICKS(500); 
-			task2_info.period = pdMS_TO_TICKS(500); 
-			task3_info.period = pdMS_TO_TICKS(500); 
+			task1_info.period = pdMS_TO_TICKS(500);
+			task2_info.period = pdMS_TO_TICKS(500);
+			task3_info.period = pdMS_TO_TICKS(500);
 		break;
 	}
 	// Ftasks // These tasks just turn an led on for the requested period of time.
@@ -343,10 +348,10 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	// Create timers for each task period
-	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback); 
-	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback); 
-	TimerHandle_t timer3 = xTimerCreate("Task3 Timer",task3_info.period,pdTRUE,task3_info.task_id,generate_Timer_Callback); 
-	
+	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback);
+	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback);
+	TimerHandle_t timer3 = xTimerCreate("Task3 Timer",task3_info.period,pdTRUE,task3_info.task_id,generate_Timer_Callback);
+
 	//start the timers
 	xTimerStart(timer1, 0);
 	xTimerStart(timer2, 0);
@@ -371,7 +376,7 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 				break;
 			default:
-				printf("invalide task id for generation");
+				printf("invalid task id for generation");
 				break;
 			}
 		}
@@ -405,7 +410,7 @@ static void monitor_Task(void *pvParameters){
 /*--------------------User Tasks---------------------------------------*/
 // need to do testing to determine correct for loop value for each execution time.
 // can simply use an oscillosope. Use GPIO set up from previous lab and select one pin as output.
-static void F_task1(void *pvParameters){
+void F_task1(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(amber_led);
 		if(BENCH == 1){
@@ -421,7 +426,7 @@ static void F_task1(void *pvParameters){
 	}
 }
 
-static void F_task2(void *pvParameters){
+void F_task2(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(blue_led);
 		if(BENCH == 1){
@@ -436,7 +441,7 @@ static void F_task2(void *pvParameters){
 	}
 }
 
-static void F_task3(void *pvParameters){
+void F_task3(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(red_led);
 		if(BENCH == 1){
@@ -473,11 +478,11 @@ void GPIO_SetUp(){
 
 /*--------------------------Functions DDS---------------------*/
 // creates dd_task struct and sends it to DDS to handle
-void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, uint32_t absolute_deadline){
+void create_dd_task( TaskHandle_t t_handle,	char type,	uint32_t task_id, uint32_t absolute_deadline){
 	struct dd_task newDD;
 
 	newDD.t_handle=t_handle;
-	newDD.type=type;	
+	newDD.type=type;
 	newDD.task_id=task_id;
 	newDD.release_time; // set by DDS
 	newDD.absolute_deadline=absolute_deadline; // This will be in ticks. Must be calculated by the task generator function
@@ -492,36 +497,36 @@ void create_dd_task( TaskHandle_t t_handle,	task_type type,	uint32_t task_id, ui
 void complete_dd_task(uint32_t task_id){
 	// Send the task ID of the completed task to the DDS through a queue
 	//! portMax delay will block the function indefinetely till space opens. This should never occurr in the current setup
-	if (xQueueSend(completed_task_queue, task_id, portMAX_DELAY) != pdPASS){
+	if (xQueueSend(completed_task_queue, &task_id, portMAX_DELAY) != pdPASS){
 		printf("Could not send to completed task Queue");
 		}
 }
 
 struct dd_task_list* get_active_dd_task_list(void){
 	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
-	struct dd_task_list *list = NULL; 
+	struct dd_task_list *list = NULL;
 	struct list_Request request = {ACTIVE_LIST, sendBack_Queue};
 	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
 	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
-	xQueueDelete(sendBack_Queue);
+	vQueueDelete(sendBack_Queue);
 	return list;
 }
 struct dd_task_list* get_complete_dd_task_list(void){
 	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
-	struct dd_task_list *list = NULL; 
+	struct dd_task_list *list = NULL;
 	struct list_Request request = {COMPLETED_LIST, sendBack_Queue};
 	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
 	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
-	xQueueDelete(sendBack_Queue);
+	vQueueDelete(sendBack_Queue);
 	return list;
 }
 struct dd_task_list* get_overdue_dd_task_list(void){
 	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
-	struct dd_task_list *list = NULL; 
+	struct dd_task_list *list = NULL;
 	struct list_Request request = {OVERDUE_LIST, sendBack_Queue};
 	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
 	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
-	xQueueDelete(sendBack_Queue);
+	vQueueDelete(sendBack_Queue);
 	return list;
 }
 /*--------------------------Helper Functions--------------------*/
@@ -541,7 +546,7 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 		if(sorted == NULL || sorted->task.absolute_deadline > curr->task.absolute_deadline){
 			curr->next_task = sorted;
 
-			if(sorted != NULL) 
+			if(sorted != NULL)
 				sorted->prev_task = curr;
 
 			sorted = curr;
@@ -593,7 +598,7 @@ void generate_Timer_Callback(TimerHandle_t xTimer){
 	uint32_t task_id = (uint32_t)pvTimerGetTimerID(xTimer);
 	if (xQueueSend(generate_queue, &task_id, portMAX_DELAY) != pdPASS){
 		printf("Could not send to generate task Queue");
-		}	
+		}
 }
 void vApplicationMallocFailedHook( void )
 {
