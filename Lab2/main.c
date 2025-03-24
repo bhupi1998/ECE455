@@ -326,7 +326,7 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 		break;
 	}
 	// Ftasks // These tasks just turn an led on for the requested period of time.
-	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle); // generator has higher priority than tasks when is created so it won't be preempted.
 	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
 	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
 	uint32_t current_Time = xTaskGetTickCount();
@@ -353,7 +353,7 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	xTimerStart(timer3, 0);
 	while(1){
 		uint32_t taskID;
-		if (xQueueReceive(generate_queue, &taskID, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(generate_queue, &taskID, portMAX_DELAY) == pdPASS) // task is blocked until at timer goes off.
 		{
 			current_Time = xTaskGetTickCount(); // update current time
 			switch (taskID)
@@ -377,8 +377,30 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 		}
 	}
 }
+// prints the number of tasks in active, overdue and completed
 static void monitor_Task(void *pvParameters){
-
+	const TickType_t xDelay = pdMS_TO_TICKS(1500); // updates every hyper period
+	struct dd_task_list *active, *completed, *overdue;
+	while(1){
+		int activeCount=0, completedCount=0, overdueCount=0;
+		active = get_active_dd_task_list();
+		completed = get_complete_dd_task_list();
+		overdue = get_overdue_dd_task_list();
+		while(active != NULL){
+			activeCount++;
+			active = active->next_task;
+		}
+		while(completed != NULL){
+			completedCount++;
+			completed = completed->next_task;
+		}
+		while(overdue != NULL){
+			overdueCount++;
+			overdue = overdue->next_task;
+		}
+		printf("\nCurrent system state: \nActive Count:%d\nCompleted Cound:%d\nOverDue Count:%d\n",activeCount,completedCount,overdueCount);
+		vTaskDelay(xDelay);
+	}
 }
 /*--------------------User Tasks---------------------------------------*/
 // need to do testing to determine correct for loop value for each execution time.
