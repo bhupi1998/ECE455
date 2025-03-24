@@ -145,6 +145,7 @@ int main(void)
 	vQueueAddToRegistry( dd_task_queue, "DD_TASK_Q" );
 	vQueueAddToRegistry( completed_task_queue, "Comp_Q" );
 	vQueueAddToRegistry( overdue_task_queue, "Over_Q" );
+	vQueueAddToRegistry(request_list_queue,"Req_Q");
 
 
 	// DDS Core
@@ -177,7 +178,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 	TimerHandle_t overdue_Timer;
 	while(1){
 		// a new task was added
-		if (xQueueReceive(dd_task_queue, &received_task, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(dd_task_queue, &received_task, 500) == pdPASS)
 		{
 			// NEED TO ASSIGN RELEASE TIME
 			received_task.release_time = xTaskGetTickCount();
@@ -214,7 +215,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// a task has completed. Receives the ID of the task
-		if(xQueueReceive(completed_task_queue, &completed_task_ID, portMAX_DELAY) == pdPASS){
+		if(xQueueReceive(completed_task_queue, &completed_task_ID, 500) == pdPASS){
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
@@ -254,7 +255,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// Message from timer about an overdue task received
-		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, 500) == pdPASS)
 		{
 			struct dd_task_list *curr = active_List;
 			// find task with ID
@@ -292,7 +293,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
 		}
-		if (xQueueReceive(request_list_queue, &request_List, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(request_list_queue, &request_List, 500) == pdPASS)
 		{
 			struct dd_task_list *response = NULL;
 			switch (request_List.list_Type)
@@ -311,7 +312,9 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 				break;
 			}
 		// send back response
-		xQueueSend(request_List.response_Queue, &response, portMAX_DELAY);
+		if(xQueueSend(request_List.response_Queue, &response, portMAX_DELAY)!=pdPASS){
+			printf("Could not send to response queue");
+			}
 		}
 	}
 
@@ -373,18 +376,18 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 			{
 			case 1:
 			current_Time = xTaskGetTickCount(); // update current time
-			xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
-			create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+			//xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+			//create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 				break;
 			case 2:
 			current_Time = xTaskGetTickCount(); // update current time
-			xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
-			create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+			//xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+			//create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 				break;
 			case 3:
 			current_Time = xTaskGetTickCount(); // update current time
-			xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
-			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+			//xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+			//create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 				break;
 			default:
 				printf("invalid task id for generation");
@@ -563,9 +566,12 @@ struct dd_task_list* get_active_dd_task_list(void){
 	QueueHandle_t sendBack_Queue = xQueueCreate(1,sizeof(struct dd_task_list*)); // temporary queue to receive information in
 	struct dd_task_list *list = NULL;
 	struct list_Request request = {ACTIVE_LIST, sendBack_Queue};
-	xQueueSend(request_list_queue, &request, portMAX_DELAY); // send request
-	xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
-	vQueueDelete(sendBack_Queue);
+	if(xQueueSend(request_list_queue, &request, portMAX_DELAY) == pdPASS){ // send request
+		xQueueReceive(sendBack_Queue, &list, portMAX_DELAY);
+		vQueueDelete(sendBack_Queue);
+	}else{
+		printf("Could not send to sendback queue");
+	}
 	return list;
 }
 struct dd_task_list* get_complete_dd_task_list(void){
