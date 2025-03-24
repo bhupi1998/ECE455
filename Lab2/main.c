@@ -128,16 +128,16 @@ int main(void)
 	prvSetupHardware();
 
 	// space for 10 tasks might be excessive since the DDS will clear it out right away
-	dd_task_queue = xQueueCreate(10, sizeof(struct dd_task));
+	dd_task_queue = xQueueCreate(3, sizeof(struct dd_task));
 
 	// contains taskID
-	completed_task_queue = xQueueCreate(10, sizeof(uint32_t));
+	completed_task_queue = xQueueCreate(3, sizeof(uint32_t));
 
 	// timer will write to this queue if task is overdue.
-	overdue_task_queue = xQueueCreate(10, sizeof(uint32_t));
+	overdue_task_queue = xQueueCreate(3, sizeof(uint32_t));
 
 	// Queue for requesting lists from DDS
-	request_list_queue = xQueueCreate(10,sizeof(struct list_Request));
+	request_list_queue = xQueueCreate(3,sizeof(struct list_Request));
 
 	// task id of tasks to release by the generator here
 	generate_queue = xQueueCreate(10,sizeof(uint32_t));
@@ -610,6 +610,7 @@ void vApplicationMallocFailedHook( void )
 	internally by FreeRTOS API functions that create tasks, queues, software 
 	timers, and semaphores.  The size of the FreeRTOS heap is set by the
 	configTOTAL_HEAP_SIZE configuration constant in FreeRTOSConfig.h. */
+	printf("Insufficient heap");
 	for( ;; );
 }
 /*-----------------------------------------------------------*/
