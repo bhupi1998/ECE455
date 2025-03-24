@@ -39,11 +39,11 @@
 #define GEN_PRIORITY 2
 #define MONITOR_PRIORITY 3
 // Executiong delays
-#define DELAY95 100
+#define DELAY95 95
 #define DELAY100 100
-#define DELAY150 100
-#define DELAY200 100
-#define DELAY250 100
+#define DELAY150 150
+#define DELAY200 200
+#define DELAY250 250
 
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
@@ -183,29 +183,38 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			received_task.release_time = xTaskGetTickCount();
 			// Create timer to check if task is overdue
 			TickType_t timerPeriod = received_task.absolute_deadline-received_task.release_time;
-			overdue_Timer= xTimerCreate("Overdue Timer",timerPeriod,pdFALSE,received_task.task_id,overdue_Timer_Callback);
-			received_task.timer_Handle= overdue_Timer; // the handle will be unique to each instance of timer
+			if(timerPeriod > 0){
+				overdue_Timer= xTimerCreate("Overdue Timer",timerPeriod,pdFALSE,received_task.task_id,overdue_Timer_Callback);
+				received_task.timer_Handle= overdue_Timer; // the handle will be unique to each instance of timer
 
-			// ADD TO ACTIVE LIST
-			struct dd_task_list *new_Node = pvPortMalloc(sizeof(struct dd_task_list)); // never freed since they just get moved in completed or overdue later
+				// ADD TO ACTIVE LIST
+				struct dd_task_list *new_Node = pvPortMalloc(sizeof(struct dd_task_list)); // never freed since they just get moved in completed or overdue later
 
-			new_Node->task = received_task; // make new linked list item
-			new_Node->next_task = active_List; // make it point to the previous head of the list
-			new_Node->prev_task = NULL; // since it's the head it has nothing to point back to
+				new_Node->task = received_task; // make new linked list item
+				new_Node->next_task = active_List; // make it point to the previous head of the list
+				new_Node->prev_task = NULL; // since it's the head it has nothing to point back to
 
-			if(active_List != NULL){
-				active_List->prev_task = new_Node;
+				if(active_List != NULL){
+					active_List->prev_task = new_Node;
+				}
+				active_List = new_Node; // update the head
+				// turn timer on
+				xTimerStart(overdue_Timer,0);
+				// SORT BY DEADLINE
+				active_List = EDF_Sort(active_List);
+				// SET USER TASK PRIORITY
+				set_dds_Task_Priority(active_List);
+			}else{
+				// task could not run be released on time, add it to overdue.
+				uint32_t task_id = received_task.task_id; // the ID of the timer is set the same as the task
+				if (xQueueSend(overdue_task_queue, &task_id, portMAX_DELAY) != pdPASS){
+					printf("Could not send to overdue task Queue");
+					}
 			}
-			active_List = new_Node; // update the head
-			// turn timer on
-			xTimerStart(overdue_Timer,0);
-			// SORT BY DEADLINE
-			active_List = EDF_Sort(active_List);
-			// SET USER TASK PRIORITY
-			set_dds_Task_Priority(active_List);
+
 		}
 		// a task has completed. Receives the ID of the task
-		else if(xQueueReceive(completed_task_queue, &completed_task_ID, portMAX_DELAY) == pdPASS){
+		if(xQueueReceive(completed_task_queue, &completed_task_ID, portMAX_DELAY) == pdPASS){
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
@@ -345,8 +354,8 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	task3_info.type = PERIODIC;
 	// Initial set up with absolute deadline
 	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
-	//create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
-	//create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	// Create timers for each task period
 	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback);
 	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback);
@@ -360,18 +369,20 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 		uint32_t taskID;
 		if (xQueueReceive(generate_queue, &taskID, portMAX_DELAY) == pdPASS) // task is blocked until at timer goes off.
 		{
-			current_Time = xTaskGetTickCount(); // update current time
 			switch (taskID)
 			{
 			case 1:
+			current_Time = xTaskGetTickCount(); // update current time
 			xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
 			create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 				break;
 			case 2:
+			current_Time = xTaskGetTickCount(); // update current time
 			xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
 			create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 				break;
 			case 3:
+			current_Time = xTaskGetTickCount(); // update current time
 			xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
 			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 				break;
@@ -414,11 +425,26 @@ void F_task1(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(amber_led);
 		if(BENCH == 1){
-			for(int i=0;i<DELAY95;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY95); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}else if(BENCH==2){
-			for(int i=0;i<DELAY95;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY95); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}else if(BENCH==3){
-			for(int i=0;i<DELAY100;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY100); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}
 		STM_EVAL_LEDOff(amber_led);
 		// send task is completed to dds
@@ -430,11 +456,27 @@ void F_task2(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(blue_led);
 		if(BENCH == 1){
-			for(int i=0;i<DELAY150;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY150); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}else if(BENCH==2){
-			for(int i=0;i<DELAY150;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY150); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
+
 		}else if(BENCH==3){
-			for(int i=0;i<DELAY200;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY200); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}
 		STM_EVAL_LEDOff(blue_led);
 		complete_dd_task(2);
@@ -445,11 +487,26 @@ void F_task3(void *pvParameters){
 	while(1){
 		STM_EVAL_LEDOn(red_led);
 		if(BENCH == 1){
-			for(int i=0;i<DELAY250;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY250); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}else if(BENCH==2){
-			for(int i=0;i<DELAY250;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY250); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}else if(BENCH==3){
-			for(int i=0;i<DELAY200;i++){}
+			uint32_t delay = pdMS_TO_TICKS(DELAY200); // time to execute in ticks
+			uint32_t now = xTaskGetTickCount();
+			uint32_t executeUntil = now+delay;
+			while(executeUntil>now){
+				now = xTaskGetTickCount();
+			}
 		}
 		STM_EVAL_LEDOff(red_led);
 		complete_dd_task(3);
