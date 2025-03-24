@@ -1,4 +1,4 @@
-
+// SET memory cheme to use heac 4!!!
 
 /* Standard includes. */
 #include <stdint.h>
@@ -53,7 +53,7 @@ static void prvSetupHardware( void );
 
 
 
-QueueHandle_t  dd_task_queue, completed_task_queue, overdue_task_queue, request_list_queue;
+QueueHandle_t  dd_task_queue, completed_task_queue, overdue_task_queue, request_list_queue, generate_queue;
 
 
 /*-----------------------------------------------------------*/
@@ -105,6 +105,8 @@ void set_dds_Task_Priority(struct dd_task_list* active_List);
 
 // handle overdue task
 void overdue_Timer_Callback(TimerHandle_t xTimer);
+// handle task generator scheduling
+void generate_Timer_Callback(TimerHandle_t xTimer);
 
 /*-----------------------------------------------------------*/
 /*----------------------------DDS Functions----------------------*/
@@ -132,6 +134,9 @@ int main(void)
 
 	// Queue for requesting lists from DDS
 	request_list_queue = xQueueCreate(10,sizeof(struct list_Request));
+
+	// task id of tasks to release by the generator here
+	generate_queue = xQueueCreate(10,sizeof(uint32_t));
 	/* Add to the registry, for the benefit of kernel aware debugging. */
 	vQueueAddToRegistry( dd_task_queue, "DD_TASK_Q" );
 	vQueueAddToRegistry( completed_task_queue, "Comp_Q" );
@@ -178,7 +183,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 			received_task.timer_Handle= overdue_Timer; // the handle will be unique to each instance of timer
 
 			// ADD TO ACTIVE LIST
-			struct dd_task_list *new_Node = pvPortMalloc(sizeof(struct dd_task_node)); // never freed since they just get moved in completed or overdue later
+			struct dd_task_list *new_Node = pvPortMalloc(sizeof(struct dd_task_list)); // never freed since they just get moved in completed or overdue later
 
 			new_Node->task = received_task; // make new linked list item
 			new_Node->next_task = active_List; // make it point to the previous head of the list
@@ -228,6 +233,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 					completed_List->prev_task = curr;
 				
 				completed_List = curr;
+				vTaskDelete(curr->task.t_handle); // Delete Task
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
@@ -267,6 +273,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				overdue_List->prev_task = curr;
 				
 				overdue_List = curr;
+				vTaskDelete(curr->task.t_handle); // suspend task 
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
@@ -286,7 +293,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 				response = overdue_List;
 			break;
 			default:
-				print("Invalide list request");
+				printf("Invalide list request");
 				break;
 			}
 		// send back response
@@ -299,7 +306,6 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters){
 // generates a new task based on period.
 static void DDS_Task_Gen_Task(void *pvParameters){
 	// initial set up.
-	static uint32_t task1_Period_Ticks,task2_Period_Ticks,task3_Period_Ticks;
 	static struct dd_task task1_info, task2_info, task3_info; // stores information for timers
 	// for easy switching between test benches
 	switch(BENCH){
@@ -337,8 +343,38 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	// Create timers for each task period
+	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback); 
+	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback); 
+	TimerHandle_t timer3 = xTimerCreate("Task3 Timer",task3_info.period,pdTRUE,task3_info.task_id,generate_Timer_Callback); 
+	
+	//start the timers
+	xTimerStart(timer1, 0);
+	xTimerStart(timer2, 0);
+	xTimerStart(timer3, 0);
 	while(1){
-
+		uint32_t taskID;
+		if (xQueueReceive(generate_queue, &taskID, portMAX_DELAY) == pdPASS)
+		{
+			current_Time = xTaskGetTickCount(); // update current time
+			switch (taskID)
+			{
+			case 1:
+			xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+			create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+				break;
+			case 2:
+			xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+			create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+				break;
+			case 3:
+			xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+				break;
+			default:
+				printf("invalide task id for generation");
+				break;
+			}
+		}
 	}
 }
 static void monitor_Task(void *pvParameters){
@@ -358,8 +394,8 @@ static void F_task1(void *pvParameters){
 			for(int i=0;i<DELAY100;i++){}
 		}
 		STM_EVAL_LEDOff(amber_led);
-		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
-		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
+		// send task is completed to dds
+		complete_dd_task(1); // task id 1
 	}
 }
 
@@ -374,8 +410,7 @@ static void F_task2(void *pvParameters){
 			for(int i=0;i<DELAY200;i++){}
 		}
 		STM_EVAL_LEDOff(blue_led);
-		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
-		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
+		complete_dd_task(2);
 	}
 }
 
@@ -390,8 +425,7 @@ static void F_task3(void *pvParameters){
 			for(int i=0;i<DELAY200;i++){}
 		}
 		STM_EVAL_LEDOff(red_led);
-		TaskHandle_t task_Handle = xTaskGetCurrentTaskHandle( void );
-		vTaskSuspend(task_Handle); //task is done. Will get released by generator as needed
+		complete_dd_task(3);
 	}
 }
 /*-----------------------Setup-------------------------*/
@@ -530,6 +564,14 @@ void overdue_Timer_Callback(TimerHandle_t xTimer){
 	if (xQueueSend(overdue_task_queue, &task_id, portMAX_DELAY) != pdPASS){
 		printf("Could not send to overdue task Queue");
 		}
+}
+
+// send id of timer to gen to indicate that a new instance of the task should be sent
+void generate_Timer_Callback(TimerHandle_t xTimer){
+	uint32_t task_id = (uint32_t)pvTimerGetTimerID(xTimer);
+	if (xQueueSend(generate_queue, &task_id, portMAX_DELAY) != pdPASS){
+		printf("Could not send to generate task Queue");
+		}	
 }
 void vApplicationMallocFailedHook( void )
 {
