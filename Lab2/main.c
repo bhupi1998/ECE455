@@ -131,7 +131,7 @@ int main(void)
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
-	DDS_Queue_Set = xQueueCreateSet(COMBINED_QUEUE_LENGTH); 
+	DDS_Queue_Set = xQueueCreateSet(COMBINED_QUEUE_LENGTH);
 	// space for 10 tasks might be excessive since the DDS will clear it out right away
 	dd_task_queue = xQueueCreate(3, sizeof(struct dd_task));
 
@@ -277,7 +277,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		// Message from timer about an overdue task received
 		if(xActivatedMember == overdue_task_queue)
-		{	
+		{
 			xQueueReceive(xActivatedMember, &overdue_task_ID, 0);
 			struct dd_task_list *curr = active_List;
 			// find task with ID
@@ -318,7 +318,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		if(xActivatedMember == request_list_queue)
 		{
-			xQueueReceive(xActivatedMember, &request_List, 0); 
+			xQueueReceive(xActivatedMember, &request_List, 0);
 			struct dd_task_list *response = NULL;
 			switch (request_List.list_Type)
 			{
@@ -400,18 +400,18 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 			{
 			case 1:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
-			//create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+			xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+			create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 				break;
 			case 2:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
-			//create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+			xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+			create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 				break;
 			case 3:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
-			//create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+			xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 				break;
 			default:
 				printf("invalid task id for generation");
