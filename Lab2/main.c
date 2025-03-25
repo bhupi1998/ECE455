@@ -1,5 +1,5 @@
-// SET memory cheme to use heac 4!!!
-
+// SET memory scheme to use heac 4!!!
+// increase heap size too
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
@@ -149,7 +149,7 @@ int main(void)
 
 
 	// DDS Core
-	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE,NULL,DDS_PRIORITY,NULL);
+	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE*2,NULL,DDS_PRIORITY,NULL);
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,GEN_PRIORITY,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,MONITOR_PRIORITY,NULL);
 
@@ -178,7 +178,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 	TimerHandle_t overdue_Timer;
 	while(1){
 		// a new task was added
-		if (xQueueReceive(dd_task_queue, &received_task, 500) == pdPASS)
+		if (xQueueReceive(dd_task_queue, &received_task, 0) == pdPASS)
 		{
 			// NEED TO ASSIGN RELEASE TIME
 			received_task.release_time = xTaskGetTickCount();
@@ -215,7 +215,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// a task has completed. Receives the ID of the task
-		if(xQueueReceive(completed_task_queue, &completed_task_ID, 500) == pdPASS){
+		if(xQueueReceive(completed_task_queue, &completed_task_ID, 0) == pdPASS){
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
@@ -255,7 +255,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// Message from timer about an overdue task received
-		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, 500) == pdPASS)
+		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, 0) == pdPASS)
 		{
 			struct dd_task_list *curr = active_List;
 			// find task with ID
@@ -293,7 +293,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
 		}
-		if (xQueueReceive(request_list_queue, &request_List, 500) == pdPASS)
+		if (xQueueReceive(request_list_queue, &request_List, 0) == pdPASS)
 		{
 			struct dd_task_list *response = NULL;
 			switch (request_List.list_Type)
