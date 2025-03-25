@@ -233,7 +233,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// a task has completed. Receives the ID of the task
-		if(xActivatedMember == completed_task_queue  )
+		else if(xActivatedMember == completed_task_queue  )
 		{
 			xQueueReceive(xActivatedMember, &completed_task_ID, 0) ;
 			struct dd_task_list *curr = active_List;
@@ -276,7 +276,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 		}
 
 		// Message from timer about an overdue task received
-		if(xActivatedMember == overdue_task_queue)
+		else if(xActivatedMember == overdue_task_queue)
 		{
 			xQueueReceive(xActivatedMember, &overdue_task_ID, 0);
 			struct dd_task_list *curr = active_List;
@@ -316,7 +316,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			set_dds_Task_Priority(active_List);
 		}
 
-		if(xActivatedMember == request_list_queue)
+		else if(xActivatedMember == request_list_queue)
 		{
 			xQueueReceive(xActivatedMember, &request_List, 0);
 			struct dd_task_list *response = NULL;
