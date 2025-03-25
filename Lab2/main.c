@@ -233,7 +233,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// a task has completed. Receives the ID of the task
-		else if(xActivatedMember == completed_task_queue  )
+		if(xActivatedMember == completed_task_queue  )
 		{
 			xQueueReceive(xActivatedMember, &completed_task_ID, 0) ;
 			struct dd_task_list *curr = active_List;
@@ -276,7 +276,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 		}
 
 		// Message from timer about an overdue task received
-		else if(xActivatedMember == overdue_task_queue)
+		if(xActivatedMember == overdue_task_queue)
 		{
 			xQueueReceive(xActivatedMember, &overdue_task_ID, 0);
 			struct dd_task_list *curr = active_List;
@@ -316,7 +316,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			set_dds_Task_Priority(active_List);
 		}
 
-		else if(xActivatedMember == request_list_queue)
+		if(xActivatedMember == request_list_queue)
 		{
 			xQueueReceive(xActivatedMember, &request_List, 0);
 			struct dd_task_list *response = NULL;
@@ -455,21 +455,21 @@ void F_task1(void *pvParameters){
 			uint32_t delay = pdMS_TO_TICKS(DELAY95); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}else if(BENCH==2){
 			uint32_t delay = pdMS_TO_TICKS(DELAY95); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}else if(BENCH==3){
 			uint32_t delay = pdMS_TO_TICKS(DELAY100); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}
@@ -486,14 +486,14 @@ void F_task2(void *pvParameters){
 			uint32_t delay = pdMS_TO_TICKS(DELAY150); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}else if(BENCH==2){
 			uint32_t delay = pdMS_TO_TICKS(DELAY150); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 
@@ -501,7 +501,7 @@ void F_task2(void *pvParameters){
 			uint32_t delay = pdMS_TO_TICKS(DELAY200); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}
@@ -517,21 +517,21 @@ void F_task3(void *pvParameters){
 			uint32_t delay = pdMS_TO_TICKS(DELAY250); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}else if(BENCH==2){
 			uint32_t delay = pdMS_TO_TICKS(DELAY250); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}else if(BENCH==3){
 			uint32_t delay = pdMS_TO_TICKS(DELAY200); // time to execute in ticks
 			uint32_t now = xTaskGetTickCount();
 			uint32_t executeUntil = now+delay;
-			while(executeUntil>now){
+			while((executeUntil - now) > delay){
 				now = xTaskGetTickCount();
 			}
 		}
