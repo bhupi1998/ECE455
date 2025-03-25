@@ -1,5 +1,6 @@
-// SET memory cheme to use heac 4!!!
-
+// SET memory scheme to use heac 4!!!
+// increase heap size too
+// configUSE_QUEUE_SET must be 1 for createSet to work!
 /* Standard includes. */
 #include <stdint.h>
 #include <stdio.h>
@@ -45,6 +46,8 @@
 #define DELAY200 200
 #define DELAY250 250
 
+// How many values combined queue can hold
+#define COMBINED_QUEUE_LENGTH 12
 /*--------------------------------------------------------*/
  /* TODO: Implement this function for any hardware specific clock configuration
  * that was not already performed before main() was called.
@@ -54,7 +57,7 @@ static void prvSetupHardware( void );
 
 
 QueueHandle_t  dd_task_queue, completed_task_queue, overdue_task_queue, request_list_queue, generate_queue;
-
+static QueueSetHandle_t DDS_Queue_Set;
 
 /*-----------------------------------------------------------*/
 
@@ -118,6 +121,7 @@ static void deadline_Driven_Scheduler_Task(void *pvParameters);
 static void DDS_Task_Gen_Task(void *pvParameters);
 static void monitor_Task(void *pvParameters);
 /*-----------------------------------------------------------*/
+
 int main(void)
 {
 	GPIO_SetUp(); // will need to be configured for led testing
@@ -127,6 +131,7 @@ int main(void)
 	can be done here if it was not done before main() was called. */
 	prvSetupHardware();
 
+	DDS_Queue_Set = xQueueCreateSet(COMBINED_QUEUE_LENGTH);
 	// space for 10 tasks might be excessive since the DDS will clear it out right away
 	dd_task_queue = xQueueCreate(3, sizeof(struct dd_task));
 
@@ -139,6 +144,13 @@ int main(void)
 	// Queue for requesting lists from DDS
 	request_list_queue = xQueueCreate(3,sizeof(struct list_Request));
 
+	// add queues to set
+	xQueueAddToSet(dd_task_queue,DDS_Queue_Set);
+	xQueueAddToSet(completed_task_queue,DDS_Queue_Set);
+	xQueueAddToSet(overdue_task_queue,DDS_Queue_Set);
+	xQueueAddToSet(request_list_queue,DDS_Queue_Set);
+
+	configASSERT(DDS_Queue_Set);
 	// task id of tasks to release by the generator here
 	generate_queue = xQueueCreate(3,sizeof(uint32_t));
 	/* Add to the registry, for the benefit of kernel aware debugging. */
@@ -149,7 +161,7 @@ int main(void)
 
 
 	// DDS Core
-	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE,NULL,DDS_PRIORITY,NULL);
+	xTaskCreate(deadline_Driven_Scheduler_Task, "DDS",configMINIMAL_STACK_SIZE*2,NULL,DDS_PRIORITY,NULL);
 	xTaskCreate(DDS_Task_Gen_Task, "Task Generator",configMINIMAL_STACK_SIZE,NULL,GEN_PRIORITY,NULL);
 	xTaskCreate(monitor_Task, "Monitor Task",configMINIMAL_STACK_SIZE,NULL,MONITOR_PRIORITY,NULL);
 
@@ -176,10 +188,16 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 	uint32_t completed_task_ID;
 	uint32_t overdue_task_ID;
 	TimerHandle_t overdue_Timer;
+
+	QueueSetMemberHandle_t xActivatedMember;
 	while(1){
+		// only blocks for 200ms. This could be changed to forever.
+		xActivatedMember = xQueueSelectFromSet(DDS_Queue_Set,200/portTICK_PERIOD_MS);
 		// a new task was added
-		if (xQueueReceive(dd_task_queue, &received_task, 500) == pdPASS)
+
+		if(xActivatedMember == dd_task_queue )
 		{
+			xQueueReceive(xActivatedMember, &received_task, 0);
 			// NEED TO ASSIGN RELEASE TIME
 			received_task.release_time = xTaskGetTickCount();
 			// Create timer to check if task is overdue
@@ -215,7 +233,9 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 		}
 		// a task has completed. Receives the ID of the task
-		if(xQueueReceive(completed_task_queue, &completed_task_ID, 500) == pdPASS){
+		if(xActivatedMember == completed_task_queue  )
+		{
+			xQueueReceive(xActivatedMember, &completed_task_ID, 0) ;
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
@@ -254,9 +274,11 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			set_dds_Task_Priority(active_List);
 
 		}
+
 		// Message from timer about an overdue task received
-		if (xQueueReceive(overdue_task_queue, &overdue_task_ID, 500) == pdPASS)
+		if(xActivatedMember == overdue_task_queue)
 		{
+			xQueueReceive(xActivatedMember, &overdue_task_ID, 0);
 			struct dd_task_list *curr = active_List;
 			// find task with ID
 			while(curr != NULL){
@@ -293,8 +315,10 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
 		}
-		if (xQueueReceive(request_list_queue, &request_List, 500) == pdPASS)
+
+		if(xActivatedMember == request_list_queue)
 		{
+			xQueueReceive(xActivatedMember, &request_List, 0);
 			struct dd_task_list *response = NULL;
 			switch (request_List.list_Type)
 			{
@@ -376,18 +400,18 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 			{
 			case 1:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
-			//create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+			xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle);
+			create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 				break;
 			case 2:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
-			//create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+			xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+			create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 				break;
 			case 3:
 			current_Time = xTaskGetTickCount(); // update current time
-			//xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
-			//create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+			xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+			create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 				break;
 			default:
 				printf("invalid task id for generation");
