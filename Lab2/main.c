@@ -31,7 +31,7 @@
 #define red_led		LED5
 #define blue_led	LED6
 
-#define BENCH 1 // used to change test bench setup
+#define BENCH 3 // used to change test bench setup
 
 #define TASK_HIGH_PRIORITY 2
 #define TASK_LOW_PRIORITY 1
@@ -223,6 +223,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 				active_List = EDF_Sort(active_List);
 				// SET USER TASK PRIORITY
 				set_dds_Task_Priority(active_List);
+				printf("\ntask Created ID %d at %d\n",new_Node->task.task_id,new_Node->task.release_time);
 			}else{
 				// task could not run be released on time, add it to overdue.
 				uint32_t task_id = received_task.task_id; // the ID of the timer is set the same as the task
@@ -269,10 +270,10 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 				completed_List = curr;
 				vTaskDelete(curr->task.t_handle); // Delete Task
+				printf("\ntask completed ID %d at %d\n",curr->task.task_id,curr->task.completion_time);
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
-
 		}
 
 		// Message from timer about an overdue task received
@@ -311,6 +312,7 @@ void deadline_Driven_Scheduler_Task(void *pvParameters){
 
 				overdue_List = curr;
 				vTaskDelete(curr->task.t_handle); // delete task
+				printf("\ntask overdue ID %d at %d\n",curr->task.task_id,curr->task.completion_time);
 			}
 			// SET USER TASK PRIORITY AGAIN
 			set_dds_Task_Priority(active_List);
@@ -380,8 +382,8 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	task2_info.type = PERIODIC;
 	task3_info.type = PERIODIC;
 	// Initial set up with absolute deadline
-	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
 	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	// Create timers for each task period
 	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback);
