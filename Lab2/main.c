@@ -37,7 +37,7 @@
 #define TASK_LOW_PRIORITY 1
 
 #define DDS_PRIORITY 8
-#define GEN_PRIORITY 2
+#define GEN_PRIORITY 3
 #define MONITOR_PRIORITY 3
 // Executiong delays
 #define DELAY95 95
@@ -368,11 +368,6 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 			task3_info.period = pdMS_TO_TICKS(500);
 		break;
 	}
-	// Ftasks // These tasks just turn an led on for the requested period of time.
-	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle); // generator has higher priority than tasks when is created so it won't be preempted.
-	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
-	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
-	uint32_t current_Time = xTaskGetTickCount();
 	// assign ID for each task
 	task1_info.task_id=1;
 	task2_info.task_id=2;
@@ -381,15 +376,22 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	task1_info.type = PERIODIC;
 	task2_info.type = PERIODIC;
 	task3_info.type = PERIODIC;
-	// Initial set up with absolute deadline
-	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
-	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
-	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
+	// Ftasks // These tasks just turn an led on for the requested period of time.
+	xTaskCreate(F_task1,"Task1",configMINIMAL_STACK_SIZE,NULL,1,&task1_info.t_handle); // generator has higher priority than tasks when is created so it won't be preempted.
+	xTaskCreate(F_task2,"Task2",configMINIMAL_STACK_SIZE,NULL,1,&task2_info.t_handle);
+	xTaskCreate(F_task3,"Task3",configMINIMAL_STACK_SIZE,NULL,1,&task3_info.t_handle);
+	uint32_t current_Time = xTaskGetTickCount();
+
+
 	// Create timers for each task period
 	TimerHandle_t timer1 = xTimerCreate("Task1 Timer",task1_info.period,pdTRUE,task1_info.task_id,generate_Timer_Callback);
 	TimerHandle_t timer2 = xTimerCreate("Task2 Timer",task2_info.period,pdTRUE,task2_info.task_id,generate_Timer_Callback);
 	TimerHandle_t timer3 = xTimerCreate("Task3 Timer",task3_info.period,pdTRUE,task3_info.task_id,generate_Timer_Callback);
 
+	// Initial set up with absolute deadline
+	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
+	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	//start the timers
 	xTimerStart(timer1, 0);
 	xTimerStart(timer2, 0);
