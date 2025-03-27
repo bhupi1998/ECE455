@@ -31,13 +31,13 @@
 #define red_led		LED5
 #define blue_led	LED6
 
-#define BENCH 3 // used to change test bench setup
+#define BENCH 1 // used to change test bench setup
 
 #define TASK_HIGH_PRIORITY 2
 #define TASK_LOW_PRIORITY 1
 
-#define DDS_PRIORITY 8
-#define GEN_PRIORITY 3
+#define DDS_PRIORITY 5
+#define GEN_PRIORITY 4
 #define MONITOR_PRIORITY 3
 // Executiong delays
 #define DELAY95 95
@@ -389,8 +389,8 @@ static void DDS_Task_Gen_Task(void *pvParameters){
 	TimerHandle_t timer3 = xTimerCreate("Task3 Timer",task3_info.period,pdTRUE,task3_info.task_id,generate_Timer_Callback);
 
 	// Initial set up with absolute deadline
-	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 	create_dd_task(task1_info.t_handle, task1_info.type, task1_info.task_id, current_Time + task1_info.period);
+	create_dd_task(task2_info.t_handle, task2_info.type, task2_info.task_id, current_Time + task2_info.period);
 	create_dd_task(task3_info.t_handle, task3_info.type, task3_info.task_id, current_Time + task3_info.period);
 	//start the timers
 	xTimerStart(timer1, 0);
@@ -621,7 +621,7 @@ struct dd_task_list* get_overdue_dd_task_list(void){
 	return list;
 }
 /*--------------------------Helper Functions--------------------*/
-// Sorts a single linked lists by earliest absolute deadline.
+// Sorts a doubly linked lists by earliest absolute deadline.
 // The head of the list will always be the highest priority.
 // Earliest to latest deadline by using insertion sort
 // Reference: https://www.geeksforgeeks.org/insertion-sort-doubly-linked-list/
@@ -634,7 +634,7 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 	while (curr != NULL){
 		struct dd_task_list* next = curr->next_task;
 
-		if(sorted == NULL || sorted->task.absolute_deadline > curr->task.absolute_deadline){
+		if(sorted == NULL || sorted->task.absolute_deadline >= curr->task.absolute_deadline){
 			curr->next_task = sorted;
 
 			if(sorted != NULL)
