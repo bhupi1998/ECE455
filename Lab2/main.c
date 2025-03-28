@@ -633,8 +633,10 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 
 	while (curr != NULL){
 		struct dd_task_list* next = curr->next_task;
-
-		if(sorted == NULL || sorted->task.absolute_deadline >= curr->task.absolute_deadline){
+		// need to handle cases where the absolute deadline is the same
+		if(sorted == NULL || sorted->task.absolute_deadline > curr->task.absolute_deadline ||
+			(sorted->task.absolute_deadline == curr->task.absolute_deadline &&
+			 sorted->task.release_time > curr->task.release_time)){
 			curr->next_task = sorted;
 
 			if(sorted != NULL)
@@ -646,8 +648,11 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 			struct dd_task_list* current_sorted = sorted;
 
 			//insert between elements
-			while(current_sorted->next_task != NULL && current_sorted->next_task->task.absolute_deadline < curr->task.absolute_deadline)
-			{
+			while(current_sorted->next_task != NULL && 
+				(current_sorted->next_task->task.absolute_deadline < curr->task.absolute_deadline ||
+				(current_sorted->next_task->task.absolute_deadline == curr->task.absolute_deadline &&
+				 current_sorted->next_task->task.release_time <= curr->task.release_time))){
+					
 				current_sorted = current_sorted->next_task;
 			}
 
