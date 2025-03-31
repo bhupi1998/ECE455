@@ -636,7 +636,7 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 		// need to handle cases where the absolute deadline is the same
 		if(sorted == NULL || sorted->task.absolute_deadline > curr->task.absolute_deadline ||
 			(sorted->task.absolute_deadline == curr->task.absolute_deadline &&
-			 sorted->task.release_time > curr->task.release_time)){
+			 sorted->task.task_id > curr->task.task_id)){
 			curr->next_task = sorted;
 
 			if(sorted != NULL)
@@ -648,11 +648,11 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 			struct dd_task_list* current_sorted = sorted;
 
 			//insert between elements
-			while(current_sorted->next_task != NULL && 
+			while(current_sorted->next_task != NULL &&
 				(current_sorted->next_task->task.absolute_deadline < curr->task.absolute_deadline ||
 				(current_sorted->next_task->task.absolute_deadline == curr->task.absolute_deadline &&
-				 current_sorted->next_task->task.release_time <= curr->task.release_time))){
-					
+				 current_sorted->next_task->task.task_id <= curr->task.task_id))){
+
 				current_sorted = current_sorted->next_task;
 			}
 
@@ -668,6 +668,7 @@ struct dd_task_list* EDF_Sort(struct dd_task_list* head){
 	}
 	return sorted;
 }
+
 // Takes in sorted active list. Sets head to high priority and the rest to low.
 void set_dds_Task_Priority(struct dd_task_list* active_List)
 {
